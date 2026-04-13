@@ -1,0 +1,33 @@
+{
+  "requestId": "20260409_183950_1310",
+  "timestamp": "2026-04-09T13:09:50.389Z",
+  "status": "completed",
+  "summary": "Found 2 traditional and WFH-suitable options in Delhi NCR under ₹25,000, ranked by design priority.",
+  "archetypeLabel": "Aspirational Aesthete / WFH Optimizer",
+  "contextInsights": [
+    "Your 'traditional' style preference significantly narrowed options, as many WFH-focused items lean towards modern aesthetics.",
+    "The 'design' ranking priority favored items with strong style alignment, even if not explicitly tagged for WFH.",
+    "Only 2 items met the high relevance score threshold within your budget and preferences, indicating a specific niche."
+  ],
+  "visionSummary": null,
+  "items": [
+    {
+      "id": "ws_d001",
+      "score": 78,
+      "tier": "primary",
+      "whyItFits": "This solid sheesham table perfectly aligns with your traditional style preference and at ₹21,000, it fits comfortably within your ₹25,000 budget, offering a sturdy WFH surface that is 120cm wide for your 160 sqft living room.",
+      "stretchJustification": null
+    },
+    {
+      "id": "ikea_c001",
+      "score": 63,
+      "tier": "primary",
+      "whyItFits": "Essential for your WFH use case, this ergonomic chair provides excellent lumbar support and at ₹19,990, it's a practical investment well within your ₹25,000 budget, fitting easily into your 160 sqft living room with its compact 67cm width.",
+      "stretchJustification": null
+    }
+  ],
+  "flaggedIssues": [
+    "Fewer than 5 items matched your preferences and budget. The strict 'traditional' style preference and 'WFH' use case, combined with the available inventory, limited the number of highly relevant options."
+  ],
+  "error": null
+}
