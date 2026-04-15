@@ -2,7 +2,7 @@
 import fs from 'fs/promises'
 import path from 'path'
 
-export async function getDynamicSystemPrompt(params: Record<string, any>): Promise<string> {
+export async function getDynamicSystemPrompt(params: Record<string, unknown>): Promise<string> {
   const promptPath = path.join(process.cwd(), 'PROMPT.md')
   let prompt = await fs.readFile(promptPath, 'utf8')
 

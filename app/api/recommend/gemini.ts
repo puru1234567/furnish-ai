@@ -1,7 +1,7 @@
 // Gemini 3.1 Pro API call for recommendations
 //import fetch from 'node-fetch'
 
-export async function generateWithGemini(systemPrompt: string, userPrompt: string, apiKey: string): Promise<any> {
+export async function generateWithGemini(systemPrompt: string, userPrompt: string, apiKey: string): Promise<unknown> {
   if (!apiKey) throw new Error('Missing GEMINI_API_KEY')
 
   // Gemini API endpoint (Google AI Studio or Vertex)
@@ -29,7 +29,9 @@ export async function generateWithGemini(systemPrompt: string, userPrompt: strin
     throw new Error(`Gemini API error ${res.status}: ${err}`)
   }
 
-  const data = await res.json()
+  const data = await res.json() as {
+    candidates: Array<{ content: { parts: Array<{ text: string }> } }>
+  }
   // Gemini returns JSON in candidates[0].content.parts[0].text
   return JSON.parse(data.candidates[0].content.parts[0].text)
 }

@@ -19,6 +19,15 @@ export type PurchaseTrigger =
   | 'gifting'     // external constraint, specific use
   | 'renovating'  // partial redo, match existing
 
+export type PainPointType =
+  | 'stains_easily'
+  | 'broke_down_durability'
+  | 'too_uncomfortable'
+  | 'too_bulky'
+  | 'assembly_nightmare'
+
+export type AssemblyComplexity = 'low' | 'medium' | 'high'
+
 // ── Inventory item ──────────────────────────────────────────────────
 export interface FurnitureItem {
   id: string
@@ -32,7 +41,10 @@ export interface FurnitureItem {
   material: string
   dimensions: { width: number; depth: number; height: number }
   durability: 'low' | 'medium' | 'high'
+  durabilityScore: number
   maintenanceEase: 'low' | 'medium' | 'high'
+  warrantyYears: number
+  assemblyComplexity: AssemblyComplexity
   imageUrl: string
   productUrl: string
   inStock: boolean
@@ -60,8 +72,8 @@ export interface UserContext {
   // What they already have (if upgrading/replacing/renovating)
   existingFurnitureDesc: string   // free text, empty string if new_home
 
-  // What failed / what they want to avoid — most underused signal
-  painPoint: string   // e.g. "current sofa stains instantly, too bulky"
+  // Structured pain points for deterministic filtering and scoring
+  painPoint: PainPointType[]
 
   // Style + use case (classic signals, still important)
   stylePreference: StyleTag[]
