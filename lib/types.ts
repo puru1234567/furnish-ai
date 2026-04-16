@@ -1,5 +1,20 @@
 // lib/types.ts
 
+// ── Room photo analysis (returned by /api/analyze-room) ────────────
+export interface RoomAnalysis {
+  wallColor: { id: string; label: string }
+  floorType: { id: string; label: string }
+  roomLayout: string
+  estimatedWidthFt: number | null
+  estimatedDepthFt: number | null
+  styleProfile: { id: string; description: string }
+  colorPalette: string[]
+  lighting: string
+  existingFurniture: string[]
+  spatialConstraints: string[]
+  confidenceScore: number
+}
+
 export type RoomType = 'living' | 'bedroom' | 'dining' | 'study' | 'kids'
 
 export type FurnitureCategory =

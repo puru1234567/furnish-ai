@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import type {
   UserContext,
@@ -11,6 +11,7 @@ import type {
   RoomType,
   Urgency,
   RankingPriority,
+  RoomAnalysis,
 } from '@/lib/types'
 
 // ──────── FURNITURE TYPE OPTIONS ────────
@@ -190,6 +191,22 @@ const DEFAULTS: FormData = {
 
 const fmt = (n: number) => `₹${n.toLocaleString('en-IN')}`
 
+function getAnalysisLabel(value: unknown, fallback = 'Not detected') {
+  if (typeof value === 'string' && value.trim()) return value.trim()
+
+  if (value && typeof value === 'object' && 'label' in value) {
+    const label = (value as { label?: unknown }).label
+    if (typeof label === 'string' && label.trim()) return label.trim()
+  }
+
+  return fallback
+}
+
+function getAnalysisText(value: unknown, fallback = 'Not detected') {
+  if (typeof value === 'string' && value.trim()) return value.trim().replace(/_/g, ' ')
+  return fallback
+}
+
 export default function FindPage() {
   const [step, setStep] = useState(0)
   const [form, setForm] = useState<FormData>(DEFAULTS)
@@ -200,6 +217,83 @@ export default function FindPage() {
   const [compareMode, setCompareMode] = useState(false)
   const [compareItems, setCompareItems] = useState<string[]>([])
   const [priceFilter, setPriceFilter] = useState(45000)
+  // ── 4-slot room photo state ────────────────────────────────────
+  const PHOTO_SLOTS = [
+    { id: 'front', label: 'Front wall', icon: '🧱', hint: 'Main wall facing you as you enter' },
+    { id: 'left',  label: 'Left wall',  icon: '←',   hint: 'Wall to your left when standing opposite from it' },
+    { id: 'right', label: 'Right wall', icon: '→',   hint: 'Wall to your right when standing opposite from it' },
+    { id: 'back',  label: 'Back / entry', icon: '🚪', hint: 'The wall with the door / entry point' },
+  ] as const
+  type SlotId = typeof PHOTO_SLOTS[number]['id']
+
+  const [roomPhotos, setRoomPhotos] = useState<Record<SlotId, File | null>>({ front: null, left: null, right: null, back: null })
+  const [photoPreviews, setPhotoPreviews] = useState<Record<SlotId, string | null>>({ front: null, left: null, right: null, back: null })
+  const [roomAnalysis, setRoomAnalysis] = useState<RoomAnalysis | null>(null)
+  const [analysisLoading, setAnalysisLoading] = useState(false)
+  const [analysisError, setAnalysisError] = useState('')
+  const [isDraggingSlot, setIsDraggingSlot] = useState<SlotId | null>(null)
+  const slotInputRefs = useRef<Record<SlotId, HTMLInputElement | null>>({ front: null, left: null, right: null, back: null })
+
+  const photoCount = Object.values(roomPhotos).filter(Boolean).length
+  const allPhotosUploaded = photoCount === 4
+
+  const handlePhotoFile = useCallback((slot: SlotId, file: File) => {
+    if (!file.type.startsWith('image/')) return
+    setRoomPhotos(prev => ({ ...prev, [slot]: file }))
+    const reader = new FileReader()
+    reader.onload = e => {
+      const dataUrl = e.target?.result as string
+      setPhotoPreviews(prev => {
+        const next = { ...prev, [slot]: dataUrl }
+        // Check if all 4 are now filled — trigger analysis
+        const allFilled = Object.values(next).every(v => v !== null)
+        if (allFilled) {
+          triggerRoomAnalysis(Object.values(next) as string[])
+        }
+        return next
+      })
+    }
+    reader.readAsDataURL(file)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const triggerRoomAnalysis = async (previews: string[]) => {
+    setAnalysisLoading(true)
+    setAnalysisError('')
+    setRoomAnalysis(null)
+    try {
+      const res = await fetch('/api/analyze-room', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ images: previews }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch((): { error?: string } => ({}))
+        throw new Error(err.error ?? 'Room analysis failed')
+      }
+      const data: RoomAnalysis = await res.json()
+      setRoomAnalysis(data)
+    } catch (e: unknown) {
+      setAnalysisError(e instanceof Error ? e.message : 'Analysis failed')
+    } finally {
+      setAnalysisLoading(false)
+    }
+  }
+
+  const clearPhoto = (slot: SlotId) => {
+    setRoomPhotos(prev => ({ ...prev, [slot]: null }))
+    setPhotoPreviews(prev => ({ ...prev, [slot]: null }))
+    setRoomAnalysis(null)
+    setAnalysisError('')
+    if (slotInputRefs.current[slot]) slotInputRefs.current[slot]!.value = ''
+  }
+
+  const handleSlotDrop = useCallback((e: React.DragEvent, slot: SlotId) => {
+    e.preventDefault()
+    setIsDraggingSlot(null)
+    const file = e.dataTransfer.files[0]
+    if (file) handlePhotoFile(slot, file)
+  }, [handlePhotoFile])
 
   const set = <K extends keyof FormData>(k: K, v: FormData[K]) => setForm(p => ({ ...p, [k]: v }))
   const toggleArray = (key: 'materialsToAvoid' | 'trustedBrands' | 'painPoint' | 'mustHaveFeatures' | 'pastIssues', val: string | PainPointType) => {
@@ -214,7 +308,7 @@ export default function FindPage() {
 
   const next = () => setStep(s => s + 1)
   const back = () => setStep(s => s - 1)
-  const reset = () => { setStep(0); setForm(DEFAULTS); setResults([]); setError(''); setCompareItems([]); setCompareMode(false) }
+  const reset = () => { setStep(0); setForm(DEFAULTS); setResults([]); setError(''); setCompareItems([]); setCompareMode(false); setRoomPhotos({ front: null, left: null, right: null, back: null }); setPhotoPreviews({ front: null, left: null, right: null, back: null }); setRoomAnalysis(null); setAnalysisError('') }
 
   const submit = async () => {
     // Map form data to UserContext
@@ -385,48 +479,177 @@ export default function FindPage() {
             <div className="form-eyebrow">Step 2 of 5</div>
             <h2 className="form-title">Tell us about your room</h2>
             <p className="form-sub">
-              A photo helps us match colors, style, and dimensions automatically. Or answer a few quick questions.{' '}
-              <strong>Completely optional</strong> — skip if you're furnishing a new space.
+              Upload photos from all 4 sides for the most accurate AI analysis — or answer manually below.{' '}
+              <strong>All photos are analyzed locally and never stored.</strong>
             </p>
 
-            {/* UPLOAD ZONE */}
-            <div className="upload-zone">
-              <div className="upload-icon">📸</div>
-              <div className="upload-title">Drop a room photo here</div>
-              <div className="upload-sub">
-                We'll extract wall color, floor type, style, and layout.<br />
-                Photo is deleted after analysis — never stored.{' '}
-                <a href="#" style={{ color: 'var(--terracotta)' }}>
-                  Privacy policy →
-                </a>
+            {/* HIDDEN FILE INPUTS — one per slot */}
+            {PHOTO_SLOTS.map(slot => (
+              <input
+                key={slot.id}
+                ref={el => { slotInputRefs.current[slot.id] = el }}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={e => { const f = e.target.files?.[0]; if (f) handlePhotoFile(slot.id, f) }}
+              />
+            ))}
+
+            {/* PROGRESS INDICATOR */}
+            <div className="photo-progress">
+              <div className="photo-progress-bar">
+                <div className="photo-progress-fill" style={{ width: `${(photoCount / 4) * 100}%` }} />
+              </div>
+              <div className="photo-progress-label">
+                {photoCount === 0 && 'Upload photos from each wall for AI room analysis'}
+                {photoCount > 0 && photoCount < 4 && `${photoCount} of 4 photos uploaded — ${4 - photoCount} more to go`}
+                {allPhotosUploaded && !analysisLoading && !roomAnalysis && 'Sending to AI for analysis…'}
+                {analysisLoading && '✦ AI is analyzing your room…'}
+                {roomAnalysis && `✓ Room analyzed · ${Math.round(roomAnalysis.confidenceScore * 100)}% confidence`}
               </div>
             </div>
 
-            {/* ROOM ANALYSIS RESULT */}
-            <div className="room-analysis">
-              <div className="ra-icon">✦</div>
-              <div>
-                <div className="ra-title">Room analyzed — here's what we found</div>
-                <div className="ra-tags">
-                  <span className="ra-tag">Cream walls</span>
-                  <span className="ra-tag">Light wood floor</span>
-                  <span className="ra-tag">Modern minimal</span>
-                  <span className="ra-tag">Moderate density</span>
-                  <span className="ra-tag">Good natural light</span>
+            {/* 4-SLOT PHOTO GRID */}
+            <div className="photo-slot-grid">
+              {PHOTO_SLOTS.map(slot => {
+                const preview = photoPreviews[slot.id]
+                const isDragging = isDraggingSlot === slot.id
+                return (
+                  <div key={slot.id} className={`photo-slot${preview ? ' filled' : ''}${isDragging ? ' dragging' : ''}`}
+                    onDrop={e => handleSlotDrop(e, slot.id)}
+                    onDragOver={e => { e.preventDefault(); setIsDraggingSlot(slot.id) }}
+                    onDragLeave={() => setIsDraggingSlot(null)}
+                  >
+                    {preview ? (
+                      <>
+                        <img src={preview} alt={slot.label} className="slot-img" />
+                        <div className="slot-overlay">
+                          <span className="slot-label-filled">{slot.label}</span>
+                          <button type="button" className="slot-remove" onClick={() => clearPhoto(slot.id)}>✕</button>
+                        </div>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className="slot-empty"
+                        onClick={() => slotInputRefs.current[slot.id]?.click()}
+                      >
+                        <span className="slot-icon">{slot.icon}</span>
+                        <span className="slot-name">{slot.label}</span>
+                        <span className="slot-hint">{slot.hint}</span>
+                        <span className="slot-add">+ Add photo</span>
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* ANALYSIS RESULT PANEL */}
+            {analysisLoading && (
+              <div className="analysis-panel loading">
+                <div className="analysis-spinner" />
+                <div>
+                  <div className="analysis-title">Analyzing your room with AI…</div>
+                  <div className="analysis-sub">Extracting wall color, floor type, layout, style, and dimensions</div>
                 </div>
               </div>
-            </div>
+            )}
+
+            {analysisError && (
+              <div className="analysis-panel error">
+                <span>⚠️</span>
+                <div>
+                  <div className="analysis-title">Analysis failed</div>
+                  <div className="analysis-sub">{analysisError}</div>
+                  <button type="button" className="upload-btn" style={{ marginTop: '8px' }}
+                    onClick={() => { const p = Object.values(photoPreviews).filter(Boolean) as string[]; if (p.length === 4) triggerRoomAnalysis(p) }}>
+                    Retry analysis
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {roomAnalysis && !analysisLoading && (
+              <div className="analysis-panel success">
+                <div className="analysis-header">
+                  <div className="analysis-badge">✦ AI Room Context</div>
+                  <div className="analysis-confidence">{Math.round(roomAnalysis.confidenceScore * 100)}% confidence</div>
+                </div>
+                <div className="analysis-grid">
+                  <div className="analysis-item">
+                    <span className="ai-label">Wall color</span>
+                    <span className="ai-value">{getAnalysisLabel(roomAnalysis.wallColor)}</span>
+                  </div>
+                  <div className="analysis-item">
+                    <span className="ai-label">Floor type</span>
+                    <span className="ai-value">{getAnalysisLabel(roomAnalysis.floorType)}</span>
+                  </div>
+                  <div className="analysis-item">
+                    <span className="ai-label">Layout</span>
+                    <span className="ai-value">{getAnalysisText(roomAnalysis.roomLayout)}</span>
+                  </div>
+                  <div className="analysis-item">
+                    <span className="ai-label">Dimensions</span>
+                    <span className="ai-value">
+                      {roomAnalysis.estimatedWidthFt && roomAnalysis.estimatedDepthFt
+                        ? `~${roomAnalysis.estimatedWidthFt} × ${roomAnalysis.estimatedDepthFt} ft`
+                        : 'Not detected'}
+                    </span>
+                  </div>
+                  <div className="analysis-item">
+                    <span className="ai-label">Style</span>
+                    <span className="ai-value">{getAnalysisLabel(roomAnalysis.styleProfile, 'Not detected')}</span>
+                  </div>
+                  <div className="analysis-item">
+                    <span className="ai-label">Lighting</span>
+                    <span className="ai-value">{getAnalysisText(roomAnalysis.lighting)}</span>
+                  </div>
+                </div>
+                {Array.isArray(roomAnalysis.colorPalette) && roomAnalysis.colorPalette.length > 0 && (
+                  <div className="analysis-palette">
+                    <span className="ai-label">Color palette</span>
+                    <div className="palette-swatches">
+                      {roomAnalysis.colorPalette.map((hex, i) => (
+                        <span key={i} className="palette-swatch" style={{ background: hex }} title={hex} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {Array.isArray(roomAnalysis.existingFurniture) && roomAnalysis.existingFurniture.length > 0 && (
+                  <div className="analysis-furniture">
+                    <span className="ai-label">Existing furniture</span>
+                    <div className="ra-tags" style={{ marginTop: '6px' }}>
+                      {roomAnalysis.existingFurniture.map((item, i) => (
+                        <span key={i} className="ra-tag">{item}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {Array.isArray(roomAnalysis.spatialConstraints) && roomAnalysis.spatialConstraints.length > 0 && (
+                  <div className="analysis-constraints">
+                    <span className="ai-label">⚠ Spatial constraints</span>
+                    <div className="ra-tags" style={{ marginTop: '6px' }}>
+                      {roomAnalysis.spatialConstraints.map((c, i) => (
+                        <span key={i} className="ra-tag" style={{ background: '#FEF3CD' }}>{c}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="upload-or">OR ANSWER MANUALLY</div>
 
             {/* WALL COLOR */}
             <div className="section-label">Wall color</div>
-            <div className="toggle-grid" style={{ marginBottom: '24px' }}>
+            <div className="toggle-grid" style={{ marginBottom: '24px', opacity: roomAnalysis ? 0.5 : 1, pointerEvents: roomAnalysis ? 'none' : 'auto' }}>
               {WALL_COLORS.map(wc => (
                 <button
                   key={wc.id}
                   className={`toggle-chip ${form.wallColor === wc.id ? 'selected' : ''}`}
                   onClick={() => set('wallColor', wc.id)}
+                  disabled={!!roomAnalysis}
                   style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
                 >
                   <span
@@ -446,12 +669,13 @@ export default function FindPage() {
 
             {/* FLOOR TYPE */}
             <div className="section-label">Floor type</div>
-            <div className="chip-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '24px' }}>
+            <div className="chip-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '24px', opacity: roomAnalysis ? 0.5 : 1, pointerEvents: roomAnalysis ? 'none' : 'auto' }}>
               {FLOOR_TYPES.map(ft => (
                 <button
                   key={ft.id}
                   className={`chip ${form.floorType === ft.id ? 'selected' : ''}`}
                   onClick={() => set('floorType', ft.id)}
+                  disabled={!!roomAnalysis}
                   style={{ textAlign: 'center', padding: '14px 8px' }}
                 >
                   <span className="chip-icon">{ft.icon}</span>
@@ -464,12 +688,13 @@ export default function FindPage() {
 
             {/* ROOM LAYOUT */}
             <div className="section-label">Room layout & rough size</div>
-            <div className="chip-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '24px' }}>
+            <div className="chip-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '24px', opacity: roomAnalysis ? 0.5 : 1, pointerEvents: roomAnalysis ? 'none' : 'auto' }}>
               {ROOM_LAYOUTS.map(rl => (
                 <button
                   key={rl.id}
                   className={`chip ${form.roomLayout === rl.id ? 'selected' : ''}`}
                   onClick={() => set('roomLayout', rl.id)}
+                  disabled={!!roomAnalysis}
                   style={{ textAlign: 'center', padding: '14px 8px' }}
                 >
                   <span className="chip-icon">{rl.icon}</span>
@@ -481,7 +706,7 @@ export default function FindPage() {
             </div>
 
             {/* ROOM DIMENSIONS */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '28px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '28px', opacity: roomAnalysis ? 0.5 : 1, pointerEvents: roomAnalysis ? 'none' : 'auto' }}>
               <div className="text-input-wrap" style={{ marginBottom: '0' }}>
                 <label>Room width (feet)</label>
                 <input
@@ -489,6 +714,7 @@ export default function FindPage() {
                   placeholder="e.g. 14"
                   value={form.roomWidth}
                   onChange={e => set('roomWidth', Number(e.target.value))}
+                  disabled={!!roomAnalysis}
                 />
               </div>
               <div className="text-input-wrap" style={{ marginBottom: '0' }}>
@@ -498,6 +724,7 @@ export default function FindPage() {
                   placeholder="e.g. 12"
                   value={form.roomDepth}
                   onChange={e => set('roomDepth', Number(e.target.value))}
+                  disabled={!!roomAnalysis}
                 />
               </div>
             </div>
