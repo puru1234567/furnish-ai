@@ -12,7 +12,27 @@ export interface RoomAnalysis {
   lighting: string
   existingFurniture: string[]
   spatialConstraints: string[]
+  furnitureNeeds: string[]
+  roomSummary: string
   confidenceScore: number
+}
+
+export interface ContextualQuestion {
+  id: string
+  question: string
+  options: Array<{
+    id: string
+    label: string
+  }>
+  reasoning?: string
+}
+
+export interface RoomContextSnapshot {
+  summary: string
+  furnitureNeeds: string[]
+  spatialConstraints: string[]
+  existingFurniture: string[]
+  lighting?: string
 }
 
 export type RoomType = 'living' | 'bedroom' | 'dining' | 'study' | 'kids'
@@ -40,6 +60,16 @@ export type PainPointType =
   | 'too_uncomfortable'
   | 'too_bulky'
   | 'assembly_nightmare'
+
+export type UniversalNeedKey = 'durability' | 'space' | 'materials_avoid'
+
+export type FurnitureSpecificNeed = 
+  | { type: 'sofa'; guest_capacity?: string; comfort_style?: string }
+  | { type: 'bed'; firmness?: string; guest_accommodation?: string }
+  | { type: 'desk'; cable_needs?: string; adjustability?: string }
+  | { type: 'chair'; comfort_priority?: string; portability?: string }
+  | { type: 'dining-table'; guest_capacity?: string; expandable?: string }
+  | { type: 'wardrobe'; accessibility?: string; ease_of_access?: string }
 
 export type AssemblyComplexity = 'low' | 'medium' | 'high'
 
@@ -76,6 +106,7 @@ export interface UserContext {
   roomSqft: number
   city: string
   deliveryOk: boolean
+  furnitureType?: string  // furniture type for type-specific needs
 
   // Budget (split — comfortable vs absolute max)
   budget: number        // primary filter ceiling
@@ -96,6 +127,22 @@ export interface UserContext {
 
   // What they already looked at and rejected (optional but gold)
   alreadyRejected: string  // e.g. "IKEA too modern, Pepperfry too expensive"
+
+  // Room-aware context from vision analysis
+  roomContext?: RoomContextSnapshot
+
+  // Dynamic answers collected after room analysis
+  contextualAnswers?: Record<string, string>
+
+  // Universal needs (apply to all furniture types)
+  universalNeeds?: {
+    durability?: string  // 'kids_pets' | 'daily_heavy' | 'none'
+    space?: string       // 'tight_corner' | 'average' | 'plenty'
+    materials_avoid?: string[]  // e.g., ['velvet', 'leather']
+  }
+
+  // Furniture-type-specific needs (context-aware questions)
+  typeSpecificNeeds?: FurnitureSpecificNeed
 
   // Decision factors
   urgency: Urgency

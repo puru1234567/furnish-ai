@@ -1,83 +1,11 @@
 /**
  * roomVision.ts
- * Dedicated Gemini Vision module for multi-angle room analysis.
- * Accepts up to 4 base64-encoded room images and returns a structured
- * RoomContext object that is fed directly into the recommendation engine.
+ * Dedicated Groq Vision module for multi-angle room analysis.
+ * Moved system prompt to lib/ai/prompts/room-analysis-prompt.ts
  */
 
-const ROOM_VISION_SYSTEM_PROMPT = `
-You are an expert interior-design analyst and spatial intelligence model.
-You have been given between 1 and 4 photographs of the same room taken from different sides (front wall, left wall, right wall, back/entry wall).
-
-Your task is to perform a comprehensive, professional-grade room analysis and return a single JSON object.
-
-ANALYSIS INSTRUCTIONS:
-────────────────────────────────────────────────────────────────
-1. WALL COLOR
-   - Identify the dominant wall color across all photos.
-   - Use one of: "cream_offwhite", "beige_sand", "sage_green", "blue_grey", "dark_charcoal", "white_pure", "terracotta", "blush_pink", "navy", "other"
-   - Also provide a human-readable label e.g. "Warm off-white with cream undertones"
-
-2. FLOOR TYPE
-   - Identify the primary flooring material.
-   - Use one of: "hardwood", "engineered_wood", "marble", "vitreous_tile", "ceramic_tile", "cement_screed", "carpet", "vinyl_laminate", "stone", "other"
-   - Also provide a human-readable label.
-
-3. ROOM LAYOUT
-   - Infer the spatial configuration from all available angles.
-   - Use one of: "standard_rectangular", "l_shaped", "narrow_rectangular", "open_plan", "square", "irregular"
-
-4. ESTIMATED DIMENSIONS
-   - Estimate approximate room dimensions in feet using furniture as scale references.
-   - Provide estimatedWidthFt and estimatedDepthFt as integers.
-   - If insufficient data, use null.
-
-5. STYLE PROFILE
-   - Identify the existing interior style.
-   - Use one of: "modern_minimal", "warm_natural", "classic_traditional", "contemporary_bold", "boho_eclectic", "industrial", "scandinavian", "transitional", "undefined"
-   - Provide a 1-sentence style description.
-
-6. COLOR PALETTE
-   - List up to 5 dominant colors visible in the room (furniture, walls, accents) as hex codes.
-
-7. LIGHTING
-   - Assess the natural and artificial lighting quality.
-   - Use one of: "bright_natural", "moderate_natural", "low_natural", "artificial_warm", "artificial_cool", "mixed"
-
-8. EXISTING FURNITURE
-   - List key furniture pieces already present (use concise labels, e.g. "3-seater sofa", "wooden coffee table", "ceiling fan").
-   - Maximum 8 items. Empty array if none visible.
-
-9. SPATIAL CONSTRAINTS
-   - Note any spatial challenges: low ceiling, pillar/column obstruction, irregular walls, limited floor space, etc.
-   - Empty array if none.
-
-10. CONFIDENCE SCORE
-    - Provide a confidence score from 0.0 to 1.0 for the overall analysis.
-    - Lower score if fewer photos are provided or room is cluttered/dark.
-
-REQUIRED OUTPUT SHAPE:
-{
-  "wallColor": { "id": "cream_offwhite", "label": "Warm off-white with cream undertones" },
-  "floorType": { "id": "hardwood", "label": "Medium-tone hardwood flooring" },
-  "roomLayout": "standard_rectangular",
-  "estimatedWidthFt": 12,
-  "estimatedDepthFt": 15,
-  "styleProfile": { "id": "modern_minimal", "description": "Clean-lined modern room with minimal clutter and neutral finishes." },
-  "colorPalette": ["#E8E0D4", "#A88F7A", "#F5F2EA"],
-  "lighting": "bright_natural",
-  "existingFurniture": ["3-seater sofa", "TV unit"],
-  "spatialConstraints": ["narrow walkway near entry"],
-  "confidenceScore": 0.84
-}
-
-CRITICAL RULES:
-- Return ONLY the JSON object. No markdown fences, no commentary, no preamble.
-- All string enum values must match exactly as listed above.
-- If a field cannot be determined with reasonable confidence, use null.
-- Be generous with existing furniture — even partial visibility counts.
-- Do NOT hallucinate room features not visible in any photo.
-`.trim()
+import { ROOM_ANALYSIS_SYSTEM_PROMPT } from '@/lib/ai/prompts/room-analysis-prompt'
+import { callGroqVision } from '@/lib/ai/groq-client'
 
 export interface RoomAnalysisResult {
   wallColor: {
@@ -99,7 +27,14 @@ export interface RoomAnalysisResult {
   lighting: string
   existingFurniture: string[]
   spatialConstraints: string[]
+  furnitureNeeds: string[]
+  roomSummary: string
   confidenceScore: number
+}
+
+interface AnalyzeRoomOptions {
+  furnitureType?: string
+  roomType?: string
 }
 
 function readString(value: unknown): string | null {
@@ -195,23 +130,111 @@ function normalizeRoomAnalysis(raw: unknown): RoomAnalysisResult {
   const roomLayoutValue = pickFirst(candidate, ['roomLayout', 'room_layout', 'layout', 'roomShape', 'room_shape'])
   const styleProfileValue = pickFirst(candidate, ['styleProfile', 'style_profile', 'style', 'interiorStyle', 'interior_style'])
   const lightingValue = pickFirst(candidate, ['lighting', 'lightingType', 'lighting_type', 'lightQuality', 'light_quality'])
+  const wallColor = readLabeledField(wallColorValue, 'other', 'Not detected')
+  const floorType = readLabeledField(floorTypeValue, 'other', 'Not detected')
+  const roomLayout = readString(roomLayoutValue) ?? 'not_detected'
+  const estimatedWidthFt =
+    readNumber(pickFirst(candidate, ['estimatedWidthFt', 'estimated_width_ft', 'roomWidthFt', 'room_width_ft'])) ??
+    readNestedNumber(candidate, ['dimensions', 'estimatedDimensions', 'estimated_dimensions'], ['widthFt', 'width_ft', 'estimatedWidthFt', 'estimated_width_ft'])
+  const estimatedDepthFt =
+    readNumber(pickFirst(candidate, ['estimatedDepthFt', 'estimated_depth_ft', 'roomDepthFt', 'room_depth_ft'])) ??
+    readNestedNumber(candidate, ['dimensions', 'estimatedDimensions', 'estimated_dimensions'], ['depthFt', 'depth_ft', 'estimatedDepthFt', 'estimated_depth_ft'])
+  const styleProfile = valueToStyleProfile(styleProfileValue)
+  const existingFurniture = readStringArrayFlexible(candidate, ['existingFurniture', 'existing_furniture', 'furniture', 'visibleFurniture', 'visible_furniture'])
+  const spatialConstraints = readStringArrayFlexible(candidate, ['spatialConstraints', 'spatial_constraints', 'constraints', 'roomConstraints', 'room_constraints'])
+  const furnitureNeeds = readStringArrayFlexible(candidate, ['furnitureNeeds', 'furniture_needs', 'likelyNeeds', 'likely_needs'])
+  const roomSummary = readString(pickFirst(candidate, ['roomSummary', 'room_summary', 'summary']))
 
   return {
-    wallColor: readLabeledField(wallColorValue, 'other', 'Not detected'),
-    floorType: readLabeledField(floorTypeValue, 'other', 'Not detected'),
-    roomLayout: readString(roomLayoutValue) ?? 'not_detected',
-    estimatedWidthFt:
-      readNumber(pickFirst(candidate, ['estimatedWidthFt', 'estimated_width_ft', 'roomWidthFt', 'room_width_ft'])) ??
-      readNestedNumber(candidate, ['dimensions', 'estimatedDimensions', 'estimated_dimensions'], ['widthFt', 'width_ft', 'estimatedWidthFt', 'estimated_width_ft']),
-    estimatedDepthFt:
-      readNumber(pickFirst(candidate, ['estimatedDepthFt', 'estimated_depth_ft', 'roomDepthFt', 'room_depth_ft'])) ??
-      readNestedNumber(candidate, ['dimensions', 'estimatedDimensions', 'estimated_dimensions'], ['depthFt', 'depth_ft', 'estimatedDepthFt', 'estimated_depth_ft']),
-    styleProfile: valueToStyleProfile(styleProfileValue),
+    wallColor,
+    floorType,
+    roomLayout,
+    estimatedWidthFt,
+    estimatedDepthFt,
+    styleProfile,
     colorPalette: readStringArrayFlexible(candidate, ['colorPalette', 'color_palette', 'palette', 'dominantColors', 'dominant_colors']),
     lighting: readString(lightingValue) ?? 'not_detected',
-    existingFurniture: readStringArrayFlexible(candidate, ['existingFurniture', 'existing_furniture', 'furniture', 'visibleFurniture', 'visible_furniture']),
-    spatialConstraints: readStringArrayFlexible(candidate, ['spatialConstraints', 'spatial_constraints', 'constraints', 'roomConstraints', 'room_constraints']),
+    existingFurniture,
+    spatialConstraints,
+    furnitureNeeds,
+    roomSummary:
+      roomSummary ??
+      buildRoomSummary({
+        roomLayout,
+        estimatedWidthFt,
+        estimatedDepthFt,
+        wallColorLabel: wallColor.label,
+        lighting: readString(lightingValue) ?? 'not_detected',
+        existingFurniture,
+        spatialConstraints,
+      }),
     confidenceScore: confidence === null ? 0 : Math.min(1, Math.max(0, confidence)),
+  }
+}
+
+function buildRoomSummary(input: {
+  roomLayout: string
+  estimatedWidthFt: number | null
+  estimatedDepthFt: number | null
+  wallColorLabel: string
+  lighting: string
+  existingFurniture: string[]
+  spatialConstraints: string[]
+}): string {
+  const size = input.estimatedWidthFt && input.estimatedDepthFt
+    ? `~${input.estimatedWidthFt}x${input.estimatedDepthFt} ft`
+    : 'size not confidently detected'
+  const furniture = input.existingFurniture.length > 0
+    ? `visible furniture includes ${input.existingFurniture.slice(0, 3).join(', ')}`
+    : 'very little existing furniture is visible'
+  const constraints = input.spatialConstraints.length > 0
+    ? `main constraint: ${input.spatialConstraints[0]}`
+    : 'no major spatial constraint detected'
+  return `${input.wallColorLabel} room with ${getReadableToken(input.roomLayout)}, ${size}, ${getReadableToken(input.lighting)} lighting; ${furniture}; ${constraints}.`
+}
+
+function getReadableToken(value: string): string {
+  return value.replace(/_/g, ' ')
+}
+
+function inferFurnitureNeeds(result: RoomAnalysisResult, furnitureType?: string): string[] {
+  const existing = result.existingFurniture.join(' ').toLowerCase()
+  const constraints = result.spatialConstraints.join(' ').toLowerCase()
+  const compactRoom = constraints.includes('narrow') || constraints.includes('tight') || constraints.includes('limited')
+
+  switch (furnitureType) {
+    case 'sofa':
+      return [
+        !existing.includes('sofa') ? 'needs_primary_seating' : 'upgrade_seating',
+        compactRoom ? 'compact_footprint_needed' : 'comfortable_lounge_seating',
+      ]
+    case 'bed':
+      return [
+        !existing.includes('bed') ? 'needs_sleeping_surface' : 'upgrade_sleep_setup',
+        compactRoom ? 'storage_bed_candidate' : 'comfort_first_sleeping',
+      ]
+    case 'desk':
+      return [
+        !existing.includes('desk') && !existing.includes('study table') ? 'needs_work_surface' : 'upgrade_workstation',
+        compactRoom ? 'compact_workstation_needed' : 'dedicated_work_setup',
+      ]
+    case 'wardrobe':
+      return [
+        'needs_storage',
+        compactRoom ? 'space_efficient_storage' : 'higher_capacity_storage',
+      ]
+    case 'dining-table':
+      return [
+        !existing.includes('dining') && !existing.includes('table') ? 'needs_dining_surface' : 'upgrade_dining_setup',
+        compactRoom ? 'compact_dining_capacity' : 'shared_meal_capacity',
+      ]
+    case 'chair':
+      return [
+        'needs_additional_seating',
+        compactRoom ? 'easy_to_move_seating' : 'comfort_or_accent_seating',
+      ]
+    default:
+      return compactRoom ? ['compact_footprint_needed'] : ['fit_room_context']
   }
 }
 
@@ -239,67 +262,44 @@ function valueToStyleProfile(value: unknown): { id: string; description: string 
 
 export async function analyzeRoomWithVision(
   base64Images: string[], // array of base64 data-url strings (1–4)
-  apiKey: string
+  apiKey: string,
+  options: AnalyzeRoomOptions = {}
 ): Promise<RoomAnalysisResult> {
-  if (!apiKey) throw new Error('Missing GEMINI_API_KEY')
+  if (!apiKey) throw new Error('Missing GROQ_API_KEY')
   if (base64Images.length === 0) throw new Error('At least one image is required')
 
-  const url =
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + apiKey
-
-  // Build image parts — strip the data-url prefix to get raw base64 + mime
-  const imageParts = base64Images.map(dataUrl => {
-    const [header, data] = dataUrl.split(',')
-    const mimeType = header.match(/data:([^;]+)/)?.[1] ?? 'image/jpeg'
-    return {
-      inline_data: {
-        mime_type: mimeType,
-        data,
-      },
-    }
-  })
-
-  // User message: label each image by its position slot
-  const slotLabels = ['Front wall view', 'Left wall view', 'Right wall view', 'Back / entry wall view']
-  const labelParts = base64Images.map((_, i) => ({
-    text: `[Photo ${i + 1}: ${slotLabels[i] ?? `View ${i + 1}`}]`,
-  }))
-
-  // Interleave label + image pairs
-  const contentParts: unknown[] = [
-    { text: ROOM_VISION_SYSTEM_PROMPT },
-    ...base64Images.flatMap((_, i) => [labelParts[i], imageParts[i]]),
-    {
-      text: 'Analyze all provided room photos together and return the unified JSON RoomAnalysisResult object.',
-    },
+  // Use shared callGroqVi sion from lib/ai/groq-client
+  const userTextParts = [
+    `Selected furniture type: ${options.furnitureType ?? 'unspecified'}.`,
+    `Declared room type: ${options.roomType ?? 'unspecified'}.`,
+    `Photos provided: ${base64Images.map((_, i) => `Photo ${i + 1} = ${['Front wall view', 'Left wall view', 'Right wall view', 'Back / entry wall view'][i]}`).join('; ')}.`,
+    'Analyze all provided room photos together and return the unified JSON RoomAnalysisResult object.',
   ]
 
-  const body = {
-    contents: [{ role: 'user', parts: contentParts }],
-    generationConfig: {
-      temperature: 0.1,
-      response_mime_type: 'application/json',
-      candidate_count: 1,
-    },
-  }
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+  const raw = await callGroqVision({
+    model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+    systemPrompt: ROOM_ANALYSIS_SYSTEM_PROMPT,
+    userTextParts,
+    base64Images,
+    maxTokens: 2048,
   })
 
-  if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`Gemini Vision API error ${res.status}: ${err}`)
+  // callGroqVision already parses JSON, so raw is an object
+  const normalized = normalizeRoomAnalysis(raw as unknown)
+  return {
+    ...normalized,
+    furnitureNeeds: normalized.furnitureNeeds.length > 0
+      ? normalized.furnitureNeeds
+      : inferFurnitureNeeds(normalized, options.furnitureType),
+    roomSummary: normalized.roomSummary || buildRoomSummary({
+      roomLayout: normalized.roomLayout,
+      estimatedWidthFt: normalized.estimatedWidthFt,
+      estimatedDepthFt: normalized.estimatedDepthFt,
+      wallColorLabel: normalized.wallColor.label,
+      lighting: normalized.lighting,
+      existingFurniture: normalized.existingFurniture,
+      spatialConstraints: normalized.spatialConstraints,
+    }),
   }
-
-  const data = (await res.json()) as {
-    candidates: Array<{ content: { parts: Array<{ text: string }> } }>
-  }
-
-  const raw = data.candidates[0]?.content?.parts[0]?.text
-  if (!raw) throw new Error('Gemini Vision returned empty response')
-
-  return normalizeRoomAnalysis(JSON.parse(raw))
 }
