@@ -1,40 +1,31 @@
 'use client'
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import Link from 'next/link'
 import { FindStepQuestions } from './components/FindStepQuestions'
 import { FindStepRoomDetails } from './components/FindStepRoomDetails'
 import { FindStepSelection } from './components/FindStepSelection'
 import { ResultsDisplay } from './components/ResultsDisplay'
-import type { FormData, MicroResponse, PhotoSlotId } from './find-page-model'
+import type { FormData, PhotoSlotId } from './find-page-model'
 import type {
-  ContextualQuestion,
   UserContext,
   StyleTag,
   PurchaseTrigger,
   PainPointType,
-  RecommendedItem,
-  RecommendationResponse,
   RoomType,
   Urgency,
   RankingPriority,
-  RoomAnalysis,
 } from '@/lib/types'
 import {
   FURNITURE_TYPES,
   ROOM_OPTIONS,
   GUIDE_MESSAGES,
   INVENTORY_COUNTS,
-  PAIN_PROFILES,
   STYLES,
   MATERIAL_AVOIDANCES,
   BRANDS,
-  CITIES,
   WALL_COLORS,
   FLOOR_TYPES,
   ROOM_LAYOUTS,
-  UNIVERSAL_NEEDS,
-  FURNITURE_SPECIFIC_NEEDS,
-  AVOIDABLE_ISSUES,
   BUDGET_OPTIONS,
   TIMELINES,
   DELIVERIES,
@@ -48,196 +39,109 @@ import {
   getAnalysisLabel,
   getAnalysisText,
 } from './find-page-utils'
+import {
+  useMicroResponse,
+  useImageCompression,
+  useRoomPhotos,
+  useRoomAnalysisFlow,
+  usePageNavigation,
+  useFurnitureRecommendation,
+  usePassiveContext,
+  useLoadingAnimation,
+  useKeyboardNavigation,
+} from './hooks'
 
 export default function FindPage() {
-  const [step, setStep] = useState(0)
+  // Form state
   const [form, setForm] = useState<FormData>(DEFAULTS)
-  const [results, setResults] = useState<RecommendedItem[]>([])
-  const [meta, setMeta] = useState<Pick<RecommendationResponse, 'summary' | 'archetypeLabel' | 'contextInsights' | 'flaggedIssues'>>({ summary: '', archetypeLabel: '', contextInsights: [], flaggedIssues: [] })
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [compareMode, setCompareMode] = useState(false)
-  const [compareItems, setCompareItems] = useState<string[]>([])
-  const [priceFilter, setPriceFilter] = useState(45000)
 
-  const [roomPhotos, setRoomPhotos] = useState<Record<PhotoSlotId, File | null>>({ front: null, left: null, right: null, back: null })
-  const [photoPreviews, setPhotoPreviews] = useState<Record<PhotoSlotId, string | null>>({ front: null, left: null, right: null, back: null })
-  const [roomAnalysis, setRoomAnalysis] = useState<RoomAnalysis | null>(null)
-  const [analysisLoading, setAnalysisLoading] = useState(false)
-  const [analysisError, setAnalysisError] = useState('')
-  const [contextualQuestions, setContextualQuestions] = useState<ContextualQuestion[]>([])
-  const [questionsLoading, setQuestionsLoading] = useState(false)
-  const [questionsError, setQuestionsError] = useState('')
-  const [questionSubIndex, setQuestionSubIndex] = useState(0)
-  const [microResponse, setMicroResponse] = useState<MicroResponse | null>(null)
-  const [loadingStageIndex, setLoadingStageIndex] = useState(0)
-  const [passiveCtx, setPassiveCtx] = useState<{ device: string; timeLabel: string; isReturn: boolean; refSource: string } | null>(null)
-  const stepRef = useRef(0)
-  const questionSubIndexRef = useRef(0)
-  const stepEnteredAt = useRef<number>(Date.now())
-  const hesitations = useRef<Record<number, number>>({})
-  const [isDraggingSlot, setIsDraggingSlot] = useState<PhotoSlotId | null>(null)
-  const slotInputRefs = useRef<Record<PhotoSlotId, HTMLInputElement | null>>({ front: null, left: null, right: null, back: null })
-  const microResponseTimeoutRef = useRef<number | null>(null)
+  // Micro-response toasts
+  const { microResponse, showMicroResponse } = useMicroResponse()
 
-  const photoCount = Object.values(roomPhotos).filter(Boolean).length
-  const allPhotosUploaded = photoCount === 4
-  const getPhotoSlotLabel = (slotId: PhotoSlotId) => PHOTO_SLOTS.find(slot => slot.id === slotId)?.label ?? slotId
+  // Image compression utilities
+  const { compressImageFile, compressImageFileForApi } = useImageCompression()
 
-  const showMicroResponse = useCallback((title: string, detail: string, tone: MicroResponse['tone'] = 'info') => {
-    if (microResponseTimeoutRef.current) {
-      window.clearTimeout(microResponseTimeoutRef.current)
-    }
-    setMicroResponse({ title, detail, tone })
-    microResponseTimeoutRef.current = window.setTimeout(() => {
-      setMicroResponse(null)
-      microResponseTimeoutRef.current = null
-    }, 3200)
-  }, [])
+  // Room photo management
+  const {
+    roomPhotos,
+    setRoomPhotos,
+    photoPreviews,
+    setPhotoPreviews,
+    isDraggingSlot,
+    setIsDraggingSlot,
+    slotInputRefs,
+    photoCount,
+    allPhotosUploaded,
+    clearPhoto,
+  } = useRoomPhotos()
 
-  const generateContextualQuestions = async (analysis: RoomAnalysis | null) => {
-    setQuestionsLoading(true)
-    setQuestionsError('')
-    try {
-      const res = await fetch('/api/generate-questions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          furnitureType: form.furnitureType,
-          roomType: form.roomType,
-          roomAnalysis: analysis,
-        }),
-      })
-
-      if (!res.ok) {
-        const err = await res.json().catch((): { error?: string } => ({}))
-        throw new Error(err.error ?? 'Failed to generate follow-up questions')
-      }
-
-      const data = await res.json() as { questions?: ContextualQuestion[] }
-      setContextualQuestions(Array.isArray(data.questions) ? data.questions.slice(0, 4) : [])
-      if (Array.isArray(data.questions) && data.questions.length > 0) {
-        showMicroResponse('Questions ready', `I found ${Math.min(data.questions.length, 4)} follow-ups based on your room and ${getFurnitureLabel(form.furnitureType)} choice.`, 'success')
-      }
-    } catch (e: unknown) {
-      setQuestionsError(e instanceof Error ? e.message : 'Failed to generate follow-up questions')
-      setContextualQuestions([])
-    } finally {
-      setQuestionsLoading(false)
-    }
-  }
-
-  const fileToDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = () => reject(new Error('Failed to read image file'))
-    reader.readAsDataURL(file)
+  // Room analysis + questions flow
+  const {
+    roomAnalysis,
+    analysisLoading,
+    analysisError,
+    contextualQuestions,
+    questionsLoading,
+    questionsError,
+    triggerRoomAnalysis,
+    generateContextualQuestions,
+    resetAnalysis,
+  } = useRoomAnalysisFlow({
+    roomPhotos,
+    compressImageFileForApi,
+    onShowMessage: showMicroResponse,
   })
 
-  const compressImageFile = async (file: File, maxWidth = 1280, quality = 0.72): Promise<string> => {
-    const sourceDataUrl = await fileToDataUrl(file)
+  // Navigation and step tracking
+  const {
+    step,
+    setStep,
+    questionSubIndex,
+    setQuestionSubIndex,
+    next,
+    back,
+    incrementQuestionSubIndex,
+    decrementQuestionSubIndex,
+    stepRef,
+    questionSubIndexRef,
+    stepEnteredAt,
+    hesitations,
+  } = usePageNavigation()
 
-    return new Promise((resolve, reject) => {
-      const image = new Image()
-      image.onload = () => {
-        const scale = Math.min(1, maxWidth / image.width)
-        const canvas = document.createElement('canvas')
-        canvas.width = Math.max(1, Math.round(image.width * scale))
-        canvas.height = Math.max(1, Math.round(image.height * scale))
+  // Recommendation API + results
+  const {
+    results,
+    meta,
+    loading,
+    error,
+    compareMode,
+    setCompareMode,
+    compareItems,
+    priceFilter,
+    setPriceFilter,
+    getRecommendations,
+    toggleCompare,
+    resetRecommendations,
+  } = useFurnitureRecommendation()
 
-        const context = canvas.getContext('2d')
-        if (!context) {
-          reject(new Error('Failed to create image compression context'))
-          return
-        }
+  // Analytics context
+  const passiveCtx = usePassiveContext()
 
-        context.drawImage(image, 0, 0, canvas.width, canvas.height)
-        resolve(canvas.toDataURL('image/jpeg', quality))
-      }
-      image.onerror = () => reject(new Error('Failed to decode image for compression'))
-      image.src = sourceDataUrl
-    })
-  }
+  // Loading animation
+  const loadingStageIndex = useLoadingAnimation(loading)
 
-  const compressImageFileForApi = async (file: File): Promise<string> => {
-    // Higher quality for vision API (92%+ confidence) — still compressed but better quality
-    return compressImageFile(file, 1920, 0.92)
-  }
+  // Keyboard navigation
+  useKeyboardNavigation({
+    stepRef,
+    questionSubIndexRef,
+    contextualQuestionsLength: contextualQuestions.length,
+    onNext: next,
+    onBack: back,
+    onNextQuestion: incrementQuestionSubIndex,
+    onPreviousQuestion: decrementQuestionSubIndex,
+  })
 
-  const handlePhotoFile = useCallback((slot: PhotoSlotId, file: File) => {
-    if (!file.type.startsWith('image/')) return
-    const nextCount = Math.min(4, photoCount + (roomPhotos[slot] ? 0 : 1))
-    setRoomPhotos(prev => ({ ...prev, [slot]: file }))
-    showMicroResponse('Photo added', `${getPhotoSlotLabel(slot)} uploaded. ${nextCount} of 4 room views are ready for analysis.`, 'success')
-    void compressImageFile(file)
-      .then(dataUrl => {
-        setPhotoPreviews(prev => {
-          const next = { ...prev, [slot]: dataUrl }
-          const allFilled = Object.values(next).every(v => v !== null)
-          if (allFilled) {
-            triggerRoomAnalysis(Object.values(next) as string[])
-          }
-          return next
-        })
-      })
-      .catch(error => {
-        console.error('[photo-compression]', error)
-        setAnalysisError(error instanceof Error ? error.message : 'Failed to prepare image')
-      })
-  }, [compressImageFile, photoCount, roomPhotos, showMicroResponse])
-
-  const triggerRoomAnalysis = async (previews: string[]) => {
-    setAnalysisLoading(true)
-    setAnalysisError('')
-    setRoomAnalysis(null)
-    setContextualQuestions([])
-    setQuestionsError('')
-    try {
-      // Use higher quality images for API (92%+ confidence) instead of preview versions
-      const apiImages = await Promise.all(
-        Object.values(roomPhotos)
-          .filter(Boolean)
-          .map(file => file ? compressImageFileForApi(file) : null)
-      ).then(images => images.filter(Boolean) as string[])
-
-      const res = await fetch('/api/analyze-room', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ images: apiImages, furnitureType: form.furnitureType, roomType: form.roomType }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch((): { error?: string } => ({}))
-        throw new Error(err.error ?? 'Room analysis failed')
-      }
-      const data: RoomAnalysis = await res.json()
-      setRoomAnalysis(data)
-      showMicroResponse('Room understood', data.roomSummary, 'success')
-      await generateContextualQuestions(data)
-    } catch (e: unknown) {
-      setAnalysisError(e instanceof Error ? e.message : 'Analysis failed')
-    } finally {
-      setAnalysisLoading(false)
-    }
-  }
-
-  const clearPhoto = (slot: PhotoSlotId) => {
-    setRoomPhotos(prev => ({ ...prev, [slot]: null }))
-    setPhotoPreviews(prev => ({ ...prev, [slot]: null }))
-    setRoomAnalysis(null)
-    setContextualQuestions([])
-    setQuestionsError('')
-    setAnalysisError('')
-    showMicroResponse('Photo removed', `${getPhotoSlotLabel(slot)} cleared. Add it again if you want a fuller room read.`, 'info')
-    if (slotInputRefs.current[slot]) slotInputRefs.current[slot]!.value = ''
-  }
-
-  const handleSlotDrop = useCallback((e: React.DragEvent, slot: PhotoSlotId) => {
-    e.preventDefault()
-    setIsDraggingSlot(null)
-    const file = e.dataTransfer.files[0]
-    if (file) handlePhotoFile(slot, file)
-  }, [handlePhotoFile])
-
+  // Form helpers
   const set = <K extends keyof FormData>(k: K, v: FormData[K]) => setForm(p => ({ ...p, [k]: v }))
   const toggleArray = (key: 'materialsToAvoid' | 'trustedBrands' | 'painPoint' | 'mustHaveFeatures' | 'pastIssues' | 'universalMaterials', val: string | PainPointType) => {
     setForm(p => {
@@ -249,28 +153,77 @@ export default function FindPage() {
     })
   }
 
-  const next = () => {
-    hesitations.current[stepRef.current] = (Date.now() - stepEnteredAt.current) / 1000
-    stepEnteredAt.current = Date.now()
-    setStep(s => s + 1)
-  }
-  const back = () => {
-    stepEnteredAt.current = Date.now()
-    setStep(s => s - 1)
-  }
-  const reset = () => { setStep(0); setForm(DEFAULTS); setResults([]); setError(''); setCompareItems([]); setCompareMode(false); setRoomPhotos({ front: null, left: null, right: null, back: null }); setPhotoPreviews({ front: null, left: null, right: null, back: null }); setRoomAnalysis(null); setContextualQuestions([]); setQuestionsError(''); setAnalysisError(''); setQuestionSubIndex(0) }
-
-  const continueFromRoomStep = async () => {
-    setQuestionSubIndex(0)
-    if (contextualQuestions.length === 0 && !questionsLoading) {
-      await generateContextualQuestions(roomAnalysis)
+  // Photo upload handler (with retry logic for compression)
+  const handlePhotoFile = useCallback((slot: PhotoSlotId, file: File) => {
+    if (!file.type.startsWith('image/')) return
+    const nextCount = Math.min(4, photoCount + (roomPhotos[slot] ? 0 : 1))
+    setRoomPhotos(prev => ({ ...prev, [slot]: file }))
+    const slotLabel = PHOTO_SLOTS.find(s => s.id === slot)?.label ?? slot
+    showMicroResponse('Photo added', `${slotLabel} uploaded. ${nextCount} of 4 room views are ready for analysis.`, 'success')
+    
+    // Compress for preview with retry (max 2 attempts)
+    const compressWithRetry = async (f: File, attempt = 1): Promise<string> => {
+      try {
+        return await compressImageFile(f)
+      } catch (error) {
+        if (attempt < 2) {
+          console.warn(`[photo-compression] Attempt ${attempt} failed, retrying...`, error)
+          await new Promise(resolve => setTimeout(resolve, 500))
+          return compressWithRetry(f, attempt + 1)
+        }
+        throw error
+      }
     }
-    next()
-  }
+    
+    void compressWithRetry(file)
+      .then(dataUrl => {
+        setPhotoPreviews(prev => {
+          const next = { ...prev, [slot]: dataUrl }
+          const allFilled = Object.values(next).every(v => v !== null)
+          if (allFilled) {
+            void triggerRoomAnalysis(form.furnitureType, form.roomType)
+          }
+          return next
+        })
+      })
+      .catch(error => {
+        console.error('[photo-compression] Failed after retries:', error)
+        // Even if preview fails, the photo file is still in roomPhotos
+        // It will be compressed with higher quality during API analysis
+        showMicroResponse(
+          'Photo preview skipped', 
+          `${slotLabel} will be analyzed with high quality during room analysis.`, 
+          'info'
+        )
+      })
+  }, [compressImageFile, photoCount, roomPhotos, setRoomPhotos, setPhotoPreviews, triggerRoomAnalysis, form.furnitureType, form.roomType, showMicroResponse])
 
-  const submit = async () => {
-    // Map form data to UserContext
-    setLoading(true); setError(''); setStep(99)
+  const handleSlotDrop = useCallback((e: React.DragEvent, slot: PhotoSlotId) => {
+    e.preventDefault()
+    setIsDraggingSlot(null)
+    const file = e.dataTransfer.files[0]
+    if (file) handlePhotoFile(slot, file)
+  }, [handlePhotoFile, setIsDraggingSlot])
+
+  // Room step continuation: trigger analysis if needed, then advance
+  const continueFromRoomStep = useCallback(async () => {
+    setQuestionSubIndex(0)
+    
+    // If room analysis hasn't been done yet, trigger it now
+    if (!roomAnalysis && !analysisLoading) {
+      console.log('[room-step] Room analysis not yet triggered, triggering now with uploaded photos')
+      await triggerRoomAnalysis(form.furnitureType, form.roomType)
+    } else if (roomAnalysis && contextualQuestions.length === 0 && !questionsLoading) {
+      // If analysis is done but questions haven't been generated, generate them
+      await generateContextualQuestions(roomAnalysis, form.furnitureType, form.roomType)
+    }
+    
+    next()
+  }, [roomAnalysis, analysisLoading, contextualQuestions.length, questionsLoading, triggerRoomAnalysis, generateContextualQuestions, form.furnitureType, form.roomType, setQuestionSubIndex, next])
+
+  // Submit and get recommendations
+  const submit = useCallback(async () => {
+    setStep(99)
     try {
       const roomSqftFromAnalysis = roomAnalysis?.estimatedWidthFt && roomAnalysis?.estimatedDepthFt
         ? roomAnalysis.estimatedWidthFt * roomAnalysis.estimatedDepthFt
@@ -290,120 +243,38 @@ export default function FindPage() {
         stylePreference: [] as StyleTag[],
         useCase: [],
         alreadyRejected: '',
-        roomContext: roomAnalysis ? {
-          summary: roomAnalysis.roomSummary,
-          furnitureNeeds: roomAnalysis.furnitureNeeds,
-          spatialConstraints: roomAnalysis.spatialConstraints,
-          existingFurniture: roomAnalysis.existingFurniture,
-          lighting: roomAnalysis.lighting,
-        } : undefined,
+        roomContext: roomAnalysis
+          ? {
+              summary: roomAnalysis.roomSummary,
+              furnitureNeeds: roomAnalysis.furnitureNeeds,
+              spatialConstraints: roomAnalysis.spatialConstraints,
+              existingFurniture: roomAnalysis.existingFurniture,
+              lighting: roomAnalysis.lighting,
+            }
+          : undefined,
         contextualAnswers: Object.keys(form.contextualAnswers).length > 0 ? form.contextualAnswers : undefined,
         urgency: 'next_month' as Urgency,
         rankingPriority: 'quality' as RankingPriority,
       }
-      
-      const res = await fetch('/api/recommend', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(ctx)
-      })
-      
-      if (!res.ok) {
-        const errData = await res.json().catch((): { error?: string } => ({}))
-        setError(errData.error || 'API failed')
-        setStep(101)
-        return
-      }
-      
-      const data: RecommendationResponse = await res.json()
-      setResults(data.items ?? [])
-      setMeta({
-        summary: data.summary,
-        archetypeLabel: data.archetypeLabel,
-        contextInsights: data.contextInsights ?? [],
-        flaggedIssues: data.flaggedIssues ?? []
-      })
+
+      await getRecommendations(ctx)
       setStep(100)
-    } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : 'Something went wrong')
+    } catch (e: unknown) {
+      console.error('[submit]', e)
       setStep(101)
-    } finally {
-      setLoading(false)
     }
-  }
+  }, [form, roomAnalysis, getRecommendations, setStep])
 
-  const toggleCompare = (itemId: string) => {
-    if (compareItems.includes(itemId)) {
-      setCompareItems(compareItems.filter(id => id !== itemId))
-    } else if (compareItems.length < 2) {
-      setCompareItems([...compareItems, itemId])
-    }
-  }
-
-  // Sync step/questionSubIndex to refs for stable keyboard handler
-  useEffect(() => { stepRef.current = step }, [step])
-  useEffect(() => { questionSubIndexRef.current = questionSubIndex }, [questionSubIndex])
-
-  // Passive context signals
-  useEffect(() => {
-    const ua = navigator.userAgent
-    const isMobile = /Mobi|Android/i.test(ua)
-    const hour = new Date().getHours()
-    const timeLabel = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening'
-    const refSource = document.referrer.includes('google') ? 'Google'
-      : document.referrer.includes('instagram') ? 'Instagram'
-      : document.referrer ? 'Link' : 'Direct'
-    const isReturn = sessionStorage.getItem('furnish-visited') === 'true'
-    sessionStorage.setItem('furnish-visited', 'true')
-    setPassiveCtx({ device: isMobile ? 'Mobile' : 'Desktop', timeLabel, isReturn, refSource })
-  }, [])
-
-  useEffect(() => {
-    if (!loading) {
-      setLoadingStageIndex(0)
-      return
-    }
-
-    const intervalId = window.setInterval(() => {
-      setLoadingStageIndex(prev => (prev + 1) % 4)
-    }, 1600)
-
-    return () => window.clearInterval(intervalId)
-  }, [loading])
-
-  useEffect(() => () => {
-    if (microResponseTimeoutRef.current) {
-      window.clearTimeout(microResponseTimeoutRef.current)
-    }
-  }, [])
-
-  // Keyboard navigation (Enter = advance, ArrowUp/Backspace = back)
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement).tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-      const s = stepRef.current
-      if (e.key === 'Enter' && s >= 0 && s <= 4) {
-        if (s === 2) {
-          const qi = questionSubIndexRef.current
-          if (qi < contextualQuestions.length - 1) setQuestionSubIndex(qi + 1)
-          else next()
-        } else {
-          next()
-        }
-      }
-      if ((e.key === 'ArrowUp' || e.key === 'Backspace') && s > 0 && s <= 4) {
-        if (s === 2 && questionSubIndexRef.current > 0) {
-          setQuestionSubIndex(qi => qi - 1)
-        } else {
-          back()
-        }
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contextualQuestions.length])
+  // Global reset
+  const reset = useCallback(() => {
+    setStep(0)
+    setForm(DEFAULTS)
+    setRoomPhotos({ front: null, left: null, right: null, back: null })
+    setPhotoPreviews({ front: null, left: null, right: null, back: null })
+    resetAnalysis()
+    resetRecommendations()
+    setQuestionSubIndex(0)
+  }, [setStep, setRoomPhotos, setPhotoPreviews, resetAnalysis, resetRecommendations, setQuestionSubIndex])
 
   // Derived display values
   const livePillText = form.furnitureType
@@ -427,6 +298,7 @@ export default function FindPage() {
     'Packaging primary and stretch picks for review',
   ]
 
+  // Render
   return (
     <>
       <header className="site-header">
@@ -486,7 +358,7 @@ export default function FindPage() {
           onRetryAnalysis={() => {
             const previews = Object.values(photoPreviews).filter(Boolean) as string[]
             if (previews.length === 4) {
-              void triggerRoomAnalysis(previews)
+              void triggerRoomAnalysis(form.furnitureType, form.roomType)
             }
           }}
           onSetField={set}
@@ -508,19 +380,19 @@ export default function FindPage() {
           questionsLoading={questionsLoading}
           questionsError={questionsError}
           getQuestionOptionLabel={getQuestionOptionLabel}
-          onRetry={() => { void generateContextualQuestions(roomAnalysis) }}
+          onRetry={() => { void generateContextualQuestions(roomAnalysis, form.furnitureType, form.roomType) }}
           onSelectAnswer={(questionId, optionId, questionText, optionLabel) => {
             set('contextualAnswers', { ...form.contextualAnswers, [questionId]: optionId })
             showMicroResponse('Answer saved', `${questionText} → ${optionLabel}`, 'success')
             setTimeout(() => {
               if (questionSubIndex < contextualQuestions.length - 1) {
-                setQuestionSubIndex(current => current + 1)
+                incrementQuestionSubIndex()
               } else {
                 next()
               }
             }, 320)
           }}
-          onPreviousQuestion={() => setQuestionSubIndex(current => current - 1)}
+          onPreviousQuestion={decrementQuestionSubIndex}
           onBack={back}
           onContinue={next}
         />

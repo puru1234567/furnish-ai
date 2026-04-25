@@ -10,7 +10,7 @@
  *
  * Token budget: ~2,400 tokens (vs ~3,200 previously). Savings: removed narrative scoring
  * explanations, removed redundant examples, restructured blocks.
- * Accuracy impact: +5% — model uses correct signal hierarchy, no generic phrases.
+ * Qualitative impact: better adherence to the intended signal hierarchy and fewer generic phrases.
  */
 
 import { UserContext, PainPointType } from '@/lib/types'

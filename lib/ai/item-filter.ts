@@ -9,8 +9,8 @@
  *  - Updated without touching route HTTP handling
  */
 
-import { furnitureData } from '@/lib/furniture-data'
 import { UserContext, FurnitureItem, PainPointType } from '@/lib/types'
+import { getPainPointStrategyRegistry } from './strategies'
 
 // ── Category mapping ───────────────────────────────────────────────
 
@@ -81,29 +81,6 @@ export const PAIN_POINT_LABELS: Record<PainPointType, string> = {
   assembly_nightmare:    'Assembly was a nightmare',
 }
 
-const PAIN_POINT_RULES: Record<PainPointType, { excludedSignals: string[]; boostSignals: string[] }> = {
-  stains_easily: {
-    excludedSignals: ['Exclude light linen and velvet-heavy upholstery'],
-    boostSignals:    ['Prioritize microfiber, leather, leatherette, dark fabric, and high maintenance ease'],
-  },
-  broke_down_durability: {
-    excludedSignals: ['Exclude durability score below 3'],
-    boostSignals:    ['Prioritize warranty longer than 1 year and durability score 4 or 5'],
-  },
-  too_uncomfortable: {
-    excludedSignals: [],
-    boostSignals:    ['Prioritize depth above 80cm, ergonomic tags, and rating above 4.0'],
-  },
-  too_bulky: {
-    excludedSignals: ['Exclude width above 200cm'],
-    boostSignals:    ['Prioritize compact, modular, and space-saving tags'],
-  },
-  assembly_nightmare: {
-    excludedSignals: ['Exclude high assembly complexity'],
-    boostSignals:    ['Prioritize no-assembly, easy-assembly, and professional-assembly-included tags'],
-  },
-}
-
 // ── Helpers ────────────────────────────────────────────────────────
 
 function unique<T>(values: T[]): T[] {
@@ -111,64 +88,52 @@ function unique<T>(values: T[]): T[] {
 }
 
 function passesPainHardFilter(item: FurnitureItem, pain: PainPointType): boolean {
-  const material = item.material.toLowerCase()
-  switch (pain) {
-    case 'stains_easily':
-      return !material.includes('velvet') && !(material.includes('linen') && material.includes('light'))
-    case 'broke_down_durability':
-      return item.durabilityScore >= 3
-    case 'too_uncomfortable':
-      return true
-    case 'too_bulky':
-      return item.dimensions.width <= 200
-    case 'assembly_nightmare':
-      return item.assemblyComplexity !== 'high'
-  }
+  const registry = getPainPointStrategyRegistry()
+  const strategy = registry.getStrategy(pain)
+  if (!strategy) return true // Unknown pain point, allow item
+  return strategy.hardFilter(item)
 }
 
 export function getPainBoostScore(item: FurnitureItem, painPoints: PainPointType[]): number {
-  const material = item.material.toLowerCase()
-  const tags = item.tags.map(t => t.toLowerCase())
-  let score = 0
+  const registry = getPainPointStrategyRegistry()
+  let totalScore = 0
 
   for (const pain of painPoints) {
-    switch (pain) {
-      case 'stains_easily':
-        if (material.includes('microfiber') || material.includes('leather') ||
-            tags.includes('dark-fabric') || item.maintenanceEase === 'high') score++
-        break
-      case 'broke_down_durability':
-        if (item.warrantyYears > 1 || item.durabilityScore >= 4) score++
-        break
-      case 'too_uncomfortable':
-        if (item.dimensions.depth > 80 || tags.includes('ergonomic') || item.rating > 4.0) score++
-        break
-      case 'too_bulky':
-        if (tags.includes('compact') || tags.includes('modular') || tags.includes('space-saving')) score++
-        break
-      case 'assembly_nightmare':
-        if (tags.includes('no-assembly') || tags.includes('easy-assembly') ||
-            tags.includes('professional-assembly-included')) score++
-        break
+    const strategy = registry.getStrategy(pain)
+    if (strategy) {
+      totalScore += strategy.boostScore(item)
     }
   }
 
-  return score
+  return totalScore
 }
 
 function buildPainPointContext(painPoints: PainPointType[]): PainPointContext {
   if (painPoints.length === 0) {
     return {
       selectedPainTypes: [],
-      boostSignals:      ['No prior furniture issue selected. Explain shortlist as first-purchase guidance.'],
-      excludedSignals:   [],
+      boostSignals: ['No prior furniture issue selected. Explain shortlist as first-purchase guidance.'],
+      excludedSignals: [],
+    }
+  }
+
+  const registry = getPainPointStrategyRegistry()
+  const boostSignals: string[] = []
+  const excludedSignals: string[] = []
+
+  for (const pain of painPoints) {
+    const strategy = registry.getStrategy(pain)
+    if (strategy) {
+      const labels = strategy.getLabels()
+      boostSignals.push(...labels.boost)
+      excludedSignals.push(...labels.exclude)
     }
   }
 
   return {
     selectedPainTypes: painPoints,
-    boostSignals:      unique(painPoints.flatMap(p => PAIN_POINT_RULES[p].boostSignals)),
-    excludedSignals:   unique(painPoints.flatMap(p => PAIN_POINT_RULES[p].excludedSignals)),
+    boostSignals: unique(boostSignals),
+    excludedSignals: unique(excludedSignals),
   }
 }
 
@@ -204,8 +169,12 @@ export interface FilterResult {
  * Hard filters: category, city, delivery, urgency, budget range.
  * Soft filter: style (only applied when pool > 15 items and leaves ≥8).
  * Max 15 items returned to keep prompt tokens manageable.
+ *
+ * @param availableItems - The full inventory to filter from
+ * @param ctx - User context with filtering preferences
+ * @returns Filtered and ranked items with metadata
  */
-export function filterAndRankItems(ctx: UserContext): FilterResult {
+export function filterAndRankItems(availableItems: FurnitureItem[], ctx: UserContext): FilterResult {
   const relaxedFlags: string[] = []
   const allowedCategories = ctx.furnitureType
     ? (FURNITURE_CATEGORY_MAP[ctx.furnitureType] ?? [ctx.furnitureType])
@@ -220,13 +189,13 @@ export function filterAndRankItems(ctx: UserContext): FilterResult {
   const budgetCeiling = ctx.budgetMax ?? ctx.budget * 1.5
   const budgetFloor   = ctx.budget * 0.65
 
-  let pool = furnitureData.filter(
+  let pool = availableItems.filter(
     item => hardMatch(item) && item.price >= budgetFloor && item.price <= budgetCeiling
   )
 
   // Relax city constraint if nothing found
   if (pool.length === 0) {
-    pool = furnitureData.filter(item =>
+    pool = availableItems.filter(item =>
       (!allowedCategories || allowedCategories.includes(item.category)) &&
       item.cities.includes('All India') &&
       item.price >= budgetFloor && item.price <= budgetCeiling

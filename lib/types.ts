@@ -13,8 +13,10 @@ export interface RoomAnalysis {
   existingFurniture: string[]
   spatialConstraints: string[]
   furnitureNeeds: string[]
+  softFurnishings: string[]
   roomSummary: string
   confidenceScore: number
+  confidence_signals?: string[]
 }
 
 export interface ContextualQuestion {

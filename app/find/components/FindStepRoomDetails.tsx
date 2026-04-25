@@ -227,6 +227,16 @@ export function FindStepRoomDetails({
                 </div>
               </div>
             )}
+            {Array.isArray(roomAnalysis.softFurnishings) && roomAnalysis.softFurnishings.length > 0 && (
+              <div className="analysis-furniture">
+                <span className="ai-label">🪟 Window treatments & textiles</span>
+                <div className="ra-tags" style={{ marginTop: '6px' }}>
+                  {roomAnalysis.softFurnishings.map((item, index) => (
+                    <span key={index} className="ra-tag" style={{ background: 'rgba(139,111,86,.10)' }}>{item}</span>
+                  ))}
+                </div>
+              </div>
+            )}
             {Array.isArray(roomAnalysis.spatialConstraints) && roomAnalysis.spatialConstraints.length > 0 && (
               <div className="analysis-constraints">
                 <span className="ai-label">⚠ Spatial constraints</span>

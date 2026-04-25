@@ -32,7 +32,7 @@ export interface FormData {
 export interface MicroResponse {
   title: string
   detail: string
-  tone: 'info' | 'success'
+  tone: 'info' | 'success' | 'error'
 }
 
 export type PhotoSlotId = 'front' | 'left' | 'right' | 'back'

@@ -16,7 +16,8 @@ export const getFurnitureLabel = (value: string) =>
  * Get the option label from a question's options array
  */
 export const getQuestionOptionLabel = (question: ContextualQuestion | undefined, optionId: string | undefined) => {
-  if (!question || !optionId) return ''
+  if (!optionId) return ''
+  if (!question) return optionId
   return question.options.find(option => option.id === optionId)?.label ?? optionId
 }
 

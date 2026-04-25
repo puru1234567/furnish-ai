@@ -268,7 +268,7 @@ export async function analyzeRoomWithVision(
   if (!apiKey) throw new Error('Missing GROQ_API_KEY')
   if (base64Images.length === 0) throw new Error('At least one image is required')
 
-  // Use shared callGroqVi sion from lib/ai/groq-client
+  // Use shared callGroqVision from lib/ai/groq-client
   const userTextParts = [
     `Selected furniture type: ${options.furnitureType ?? 'unspecified'}.`,
     `Declared room type: ${options.roomType ?? 'unspecified'}.`,

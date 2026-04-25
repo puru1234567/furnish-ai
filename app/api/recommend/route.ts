@@ -1,17 +1,21 @@
 ﻿import { NextRequest, NextResponse } from 'next/server'
-import { furnitureData } from '@/lib/furniture-data'
 import { UserContext, RecommendedItem } from '@/lib/types'
 import { callGroqChat } from '@/lib/ai/groq-client'
 import { filterAndRankItems, toSlimItem } from '@/lib/ai/item-filter'
 import { buildRecommendationsPrompt } from '@/lib/ai/prompts/recommendations-prompt'
+import { getFurnitureRepository } from '@/lib/repositories'
 
-// All exports from lib/ai/ modules; slim route (50 lines total)
+// Slim route orchestrating recommendation flow
 
 export async function POST(req: NextRequest) {
   try {
     const ctx: UserContext = await req.json()
 
-    const { items: eligible, relaxedFlags, painContext } = filterAndRankItems(ctx)
+    // Get inventory from repository (later can be Supabase)
+    const repository = getFurnitureRepository()
+    const allItems = await repository.findAll()
+
+    const { items: eligible, relaxedFlags, painContext } = filterAndRankItems(allItems, ctx)
 
     if (eligible.length === 0) {
       return NextResponse.json({
@@ -44,7 +48,7 @@ export async function POST(req: NextRequest) {
       flaggedIssues?: string[]
     }
 
-    const itemMap = new Map(furnitureData.map(i => [i.id, i]))
+    const itemMap = new Map(allItems.map(i => [i.id, i]))
     const recommended = (aiResult.items ?? [])
       .map(ai => {
         const full = itemMap.get(ai.id)

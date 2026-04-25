@@ -143,7 +143,7 @@ export function preprocessRoomImages(
   return {
     result: {
       images: deduplicated,
-      originalCount: rawImages.length,
+      originalCount: validImages.length,
       finalCount: deduplicated.length,
       duplicatesRemoved: removedCount,
       warnings,
