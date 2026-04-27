@@ -1,10 +1,9 @@
 // lib/config/furniture-config.ts
 // Furniture type definitions and inventory
 
-import type { FurnitureCategory } from '@/lib/types'
 
 export interface FurnitureTypeConfig {
-  id: FurnitureCategory
+  id: string
   label: string
   icon: string
   desc: string
@@ -19,7 +18,7 @@ export const FURNITURE_TYPES: FurnitureTypeConfig[] = [
   { id: 'chair', label: 'Chair', icon: '🪑', desc: 'Accent & dining' },
 ]
 
-export const INVENTORY_COUNTS: Record<FurnitureCategory, number> = {
+export const INVENTORY_COUNTS: Record<string, number> = {
   sofa: 247,
   bed: 128,
   'dining-table': 94,
@@ -31,13 +30,13 @@ export const INVENTORY_COUNTS: Record<FurnitureCategory, number> = {
 /**
  * Get furniture type config by ID
  */
-export function getFurnitureTypeConfig(id: FurnitureCategory | string): FurnitureTypeConfig | null {
+export function getFurnitureTypeConfig(id: string): FurnitureTypeConfig | null {
   return FURNITURE_TYPES.find(t => t.id === id) ?? null
 }
 
 /**
  * Get inventory count for furniture type
  */
-export function getInventoryCount(furnitureType: FurnitureCategory | string): number {
-  return INVENTORY_COUNTS[furnitureType as FurnitureCategory] ?? 247
+export function getInventoryCount(furnitureType: string): number {
+  return INVENTORY_COUNTS[furnitureType] ?? 247
 }
