@@ -11,6 +11,15 @@ export const FURNITURE_TYPES = [
   { id: 'chair', label: 'Chair', icon: '🪑', desc: 'Accent & dining' },
 ]
 
+export const FURNITURE_INPUT_ALIASES: Record<string, string[]> = {
+  sofa: ['sofa', 'couch', 'sectional', 'loveseat', 'settee', 'l shape sofa', 'l-shaped sofa'],
+  bed: ['bed', 'cot', 'bed frame', 'queen bed', 'king bed', 'single bed'],
+  'dining-table': ['dining table', 'dining set', 'dining table set', 'dining'],
+  wardrobe: ['wardrobe', 'closet', 'cupboard', 'almirah', 'cabinet'],
+  desk: ['desk', 'study table', 'work desk', 'office desk', 'writing desk', 'computer desk'],
+  chair: ['chair', 'accent chair', 'dining chair', 'office chair', 'armchair', 'lounge chair'],
+}
+
 // ──────── ROOM TYPE OPTIONS ────────
 export const ROOM_OPTIONS = [
   'Living room',

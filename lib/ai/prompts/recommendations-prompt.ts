@@ -114,6 +114,10 @@ function buildUserContextBlock(ctx: UserContext, budgetMax: number, painContext:
     lines.push(`contextual_answers=${answers}`)
   }
 
+  if (ctx.additionalNotes?.trim()) {
+    lines.push(`additional_notes="${ctx.additionalNotes.trim()}" → treat as soft preference signal; use for ranking explanation only when supported by item data`)
+  }
+
   if (ctx.existingFurnitureDesc?.trim()) {
     lines.push(`existing_furniture="${ctx.existingFurnitureDesc.trim()}" → match or contrast as appropriate`)
   }
@@ -136,7 +140,8 @@ export function buildRecommendationsPrompt(
   const wallCm  = Math.round(Math.sqrt(ctx.roomSqft * 929) * 0.5)
   const budget  = ctx.budget
   const budgetMax = ctx.budgetMax ?? Math.round(budget * 1.4)
-  const budget125 = Math.round(budget * 1.25)
+  const budget112 = Math.round(budget * 1.12)
+  const stretchCap = Math.min(budgetMax, Math.round(budget * 1.15))
 
   const useCaseBonuses: string[] = []
   if (ctx.useCase.includes('kids') || ctx.useCase.includes('pets'))
@@ -160,8 +165,10 @@ ITEMS TO SCORE:
 ${JSON.stringify(items)}
 
 TIER RULES:
-primary: score≥50 AND price≤₹${budget125}, max 10 items, sort desc by score
-stretch: score≥60 AND price ₹${budget125}–₹${budgetMax}, max 3 items, sort desc by score
+primary: score≥50 AND price≤₹${budget}, max 10 items, sort desc by score
+stretch: score≥64 AND price >₹${budget} and price≤₹${stretchCap}, max 2 items, sort desc by score
+stretch gate: include ONLY if item has a concrete, user-relevant improvement over likely in-budget options such as higher durabilityScore, longer warranty, better rating/reviews, easier maintenance, or materially better size fit for room constraints
+soft preference: prefer stretch items within ~12% of budget (≤₹${budget112}) unless a stronger quantified gain clearly justifies going higher
 discard: everything else — omit entirely
 
 OUTPUT SHAPE (exact keys, no extras):
@@ -175,7 +182,7 @@ OUTPUT SHAPE (exact keys, no extras):
       "score": <0-100>,
       "tier": "primary" | "stretch",
       "whyItFits": "<≤40 words — MUST include ₹price OR dimensions in cm AND one signal from: pain/room/contextual/trigger/existing>",
-      "stretchJustification": null | "₹[exact_overage] over your ₹${budget} budget. Worth it because: [quantified reason]"
+      "stretchJustification": null | "₹[exact_overage] over your ₹${budget} budget. Worth it because: [specific improvement vs likely in-budget options] and why that matters for this user's room, pain point, or contextual answers"
     }
   ],
   "flaggedIssues": []
@@ -187,5 +194,6 @@ FORBIDDEN (accuracy killers):
 - Hallucinating features not in item data
 - Overriding pain_point hard exclusions
 - whyItFits without a real number (₹, cm, or rating)
+- stretch items without a quantified improvement tied to user needs
 ${relaxedFlags.length > 0 ? `\nNOTE: ${relaxedFlags.join('; ')}` : ''}`
 }

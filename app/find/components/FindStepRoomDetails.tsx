@@ -20,6 +20,7 @@ interface FindStepRoomDetailsProps {
   form: FormData
   livePillText: string
   echoLine: string
+  showProgress?: boolean
   photoSlots: readonly PhotoSlot[]
   photoCount: number
   allPhotosUploaded: boolean
@@ -52,6 +53,7 @@ export function FindStepRoomDetails({
   form,
   livePillText,
   echoLine,
+  showProgress = true,
   photoSlots,
   photoCount,
   allPhotosUploaded,
@@ -81,13 +83,40 @@ export function FindStepRoomDetails({
 }: FindStepRoomDetailsProps) {
   return (
     <div className="page active">
-      <FindProgressSteps currentStep={2} livePillText={livePillText} />
+      {showProgress && <FindProgressSteps currentStep={2} livePillText={livePillText} />}
 
-      <div className="form-body">
+      <div className="form-body journey-form-body room-journey-body">
         {echoLine && <div className="echo-panel">{echoLine}</div>}
         <div className="form-eyebrow">Step 2 of 5</div>
         <h2 className="form-title">Tell us about your room</h2>
-        <p className="form-sub">Upload up to 4 room photos for AI analysis, or fill in details below.</p>
+        <p className="form-sub">Upload up to 4 room photos for AI analysis. If needed, add only rough room dimensions below.</p>
+
+        <div className="journey-spotlight journey-step-spotlight">
+          <div className="journey-spotlight-copy">
+            <div className="journey-spotlight-label">Room intelligence</div>
+            <div className="journey-spotlight-title">Show the room once. We will stop asking you to describe what the camera can already see.</div>
+            <div className="journey-spotlight-sub">
+              Inspired by calmer conversational flows, this step keeps the task narrow: upload a few views, let the AI read layout and palette, then move straight into the ranking questions that actually matter.
+            </div>
+          </div>
+          <div className="journey-spotlight-rail">
+            <div className="journey-mini-card">
+              <span className="journey-mini-kicker">Capture</span>
+              <strong>4 guided angles</strong>
+              <span>One wall per photo keeps the analysis grounded and reduces noisy follow-up.</span>
+            </div>
+            <div className="journey-mini-card">
+              <span className="journey-mini-kicker">Extract</span>
+              <strong>Layout, palette, constraints</strong>
+              <span>We use the room read to influence ranking, not just show a decorative summary.</span>
+            </div>
+            <div className="journey-mini-card accent">
+              <span className="journey-mini-kicker">Fallback</span>
+              <strong>Manual dimensions still work</strong>
+              <span>If photos are incomplete, you can continue with rough room size and keep going.</span>
+            </div>
+          </div>
+        </div>
 
         <div className={`understanding-card ${roomAnalysis ? 'success' : ''}`}>
           <div className="understanding-title">
@@ -101,6 +130,17 @@ export function FindStepRoomDetails({
             <span className="understanding-tag">{photoCount}/4 photos</span>
             {roomAnalysis?.lighting && <span className="understanding-tag">{getAnalysisText(roomAnalysis.lighting)}</span>}
             {roomAnalysis?.spatialConstraints?.[0] && <span className="understanding-tag">{roomAnalysis.spatialConstraints[0]}</span>}
+          </div>
+        </div>
+
+        <div className="journey-inline-checks">
+          <div className="journey-inline-check">
+            <strong>Why photos first</strong>
+            <span>They answer room-type, obstruction, and styling questions faster than manual form fields.</span>
+          </div>
+          <div className="journey-inline-check">
+            <strong>What you get next</strong>
+            <span>The next step shows the extracted room context while asking only a few ranking questions.</span>
           </div>
         </div>
 
@@ -191,140 +231,34 @@ export function FindStepRoomDetails({
         )}
 
         {roomAnalysis && !analysisLoading && (
-          <div className="analysis-panel success">
+          <div className="analysis-panel success room-analysis-preview">
             <div className="analysis-header">
-              <div className="analysis-badge">✦ AI Room Context</div>
+              <div className="analysis-badge">✦ Room read complete</div>
               <div className="analysis-confidence">{Math.round(roomAnalysis.confidenceScore * 100)}% confidence</div>
             </div>
-            <div style={{ marginBottom: '14px', padding: '12px 14px', borderRadius: '10px', background: 'rgba(92,107,74,.08)', color: 'var(--charcoal)', fontSize: '14px', lineHeight: '1.6' }}>
-              {roomAnalysis.roomSummary}
+            <div className="analysis-sub">
+              Your room context is ready. We will show the extracted layout, constraints, and style signals in the next step while you answer the follow-up questions.
             </div>
-            <div className="analysis-grid">
-              <div className="analysis-item"><span className="ai-label">Wall color</span><span className="ai-value">{getAnalysisLabel(roomAnalysis.wallColor)}</span></div>
-              <div className="analysis-item"><span className="ai-label">Floor type</span><span className="ai-value">{getAnalysisLabel(roomAnalysis.floorType)}</span></div>
-              <div className="analysis-item"><span className="ai-label">Layout</span><span className="ai-value">{getAnalysisText(roomAnalysis.roomLayout)}</span></div>
-              <div className="analysis-item"><span className="ai-label">Dimensions</span><span className="ai-value">{roomAnalysis.estimatedWidthFt && roomAnalysis.estimatedDepthFt ? `~${roomAnalysis.estimatedWidthFt} × ${roomAnalysis.estimatedDepthFt} ft` : 'Not detected'}</span></div>
-              <div className="analysis-item"><span className="ai-label">Style</span><span className="ai-value">{getAnalysisLabel(roomAnalysis.styleProfile, 'Not detected')}</span></div>
-              <div className="analysis-item"><span className="ai-label">Lighting</span><span className="ai-value">{getAnalysisText(roomAnalysis.lighting)}</span></div>
-            </div>
-            {Array.isArray(roomAnalysis.colorPalette) && roomAnalysis.colorPalette.length > 0 && (
-              <div className="analysis-palette">
-                <span className="ai-label">Color palette</span>
-                <div className="palette-swatches">
-                  {roomAnalysis.colorPalette.map((hex, index) => (
-                    <span key={index} className="palette-swatch" style={{ background: hex }} title={hex} />
-                  ))}
-                </div>
-              </div>
-            )}
-            {Array.isArray(roomAnalysis.existingFurniture) && roomAnalysis.existingFurniture.length > 0 && (
-              <div className="analysis-furniture">
-                <span className="ai-label">Existing furniture</span>
-                <div className="ra-tags" style={{ marginTop: '6px' }}>
-                  {roomAnalysis.existingFurniture.map((item, index) => (
-                    <span key={index} className="ra-tag">{item}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {Array.isArray(roomAnalysis.softFurnishings) && roomAnalysis.softFurnishings.length > 0 && (
-              <div className="analysis-furniture">
-                <span className="ai-label">🪟 Window treatments & textiles</span>
-                <div className="ra-tags" style={{ marginTop: '6px' }}>
-                  {roomAnalysis.softFurnishings.map((item, index) => (
-                    <span key={index} className="ra-tag" style={{ background: 'rgba(139,111,86,.10)' }}>{item}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {Array.isArray(roomAnalysis.spatialConstraints) && roomAnalysis.spatialConstraints.length > 0 && (
-              <div className="analysis-constraints">
-                <span className="ai-label">⚠ Spatial constraints</span>
-                <div className="ra-tags" style={{ marginTop: '6px' }}>
-                  {roomAnalysis.spatialConstraints.map((constraint, index) => (
-                    <span key={index} className="ra-tag" style={{ background: '#FEF3CD' }}>{constraint}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {Array.isArray(roomAnalysis.furnitureNeeds) && roomAnalysis.furnitureNeeds.length > 0 && (
-              <div className="analysis-furniture">
-                <span className="ai-label">Likely need signals</span>
-                <div className="ra-tags" style={{ marginTop: '6px' }}>
-                  {roomAnalysis.furnitureNeeds.map((item, index) => (
-                    <span key={index} className="ra-tag" style={{ background: 'rgba(92,107,74,.12)' }}>{item.replace(/_/g, ' ')}</span>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         )}
 
-        <div className="upload-or">OR ANSWER MANUALLY</div>
+        <div className="upload-or">OPTIONAL: ADD ROOM DIMENSIONS</div>
 
-        <div className="section-label">Wall color</div>
-        <div className="toggle-grid" style={{ marginBottom: '24px', opacity: roomAnalysis ? 0.5 : 1, pointerEvents: roomAnalysis ? 'none' : 'auto' }}>
-          {wallColors.map(wallColor => (
-            <button
-              key={wallColor.id}
-              className={`toggle-chip ${form.wallColor === wallColor.id ? 'selected' : ''}`}
-              onClick={() => onSetField('wallColor', wallColor.id)}
-              disabled={!!roomAnalysis}
-              style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
-            >
-              <span style={{ width: '14px', height: '14px', borderRadius: '50%', background: wallColor.color, border: '1px solid #ccc', display: 'inline-block' }}></span>
-              {wallColor.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="section-label">Floor type</div>
-        <div className="chip-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '24px', opacity: roomAnalysis ? 0.5 : 1, pointerEvents: roomAnalysis ? 'none' : 'auto' }}>
-          {floorTypes.map(floorType => (
-            <button
-              key={floorType.id}
-              className={`chip ${form.floorType === floorType.id ? 'selected' : ''}`}
-              onClick={() => onSetField('floorType', floorType.id)}
-              disabled={!!roomAnalysis}
-              style={{ textAlign: 'center', padding: '14px 8px' }}
-            >
-              <span className="chip-icon">{floorType.icon}</span>
-              <span className="chip-label" style={{ fontSize: '12px' }}>{floorType.label}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className="section-label">Room layout & rough size</div>
-        <div className="chip-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: '24px', opacity: roomAnalysis ? 0.5 : 1, pointerEvents: roomAnalysis ? 'none' : 'auto' }}>
-          {roomLayouts.map(roomLayout => (
-            <button
-              key={roomLayout.id}
-              className={`chip ${form.roomLayout === roomLayout.id ? 'selected' : ''}`}
-              onClick={() => onSetField('roomLayout', roomLayout.id)}
-              disabled={!!roomAnalysis}
-              style={{ textAlign: 'center', padding: '14px 8px' }}
-            >
-              <span className="chip-icon">{roomLayout.icon}</span>
-              <span className="chip-label" style={{ fontSize: '12px' }}>{roomLayout.label}</span>
-            </button>
-          ))}
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '28px', opacity: roomAnalysis ? 0.5 : 1, pointerEvents: roomAnalysis ? 'none' : 'auto' }}>
-          <div className="text-input-wrap" style={{ marginBottom: '0' }}>
+        <div className="room-dimension-grid">
+          <div className="text-input-wrap compact">
             <label>Room width (feet)</label>
-            <input type="number" placeholder="e.g. 14" value={form.roomWidth} onChange={event => onSetField('roomWidth', Number(event.target.value))} disabled={!!roomAnalysis} />
+            <input type="number" placeholder="e.g. 14" value={form.roomWidth} onChange={event => onSetField('roomWidth', Number(event.target.value))} />
           </div>
-          <div className="text-input-wrap" style={{ marginBottom: '0' }}>
+          <div className="text-input-wrap compact">
             <label>Room depth (feet)</label>
-            <input type="number" placeholder="e.g. 12" value={form.roomDepth} onChange={event => onSetField('roomDepth', Number(event.target.value))} disabled={!!roomAnalysis} />
+            <input type="number" placeholder="e.g. 12" value={form.roomDepth} onChange={event => onSetField('roomDepth', Number(event.target.value))} />
           </div>
         </div>
 
         <div className="btn-row">
           <button className="btn-back" onClick={onBack}>← Back</button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <button className="btn-skip" onClick={onSkip}>Skip this step</button>
+          <div className="room-step-actions">
+            <button className="btn-skip" onClick={onSkip}>Use dimensions only</button>
             <button className="btn-next" onClick={onContinue} disabled={analysisLoading || questionsLoading}>
               Continue →
             </button>

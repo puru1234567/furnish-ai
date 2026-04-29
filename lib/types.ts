@@ -130,6 +130,9 @@ export interface UserContext {
   // What they already looked at and rejected (optional but gold)
   alreadyRejected: string  // e.g. "IKEA too modern, Pepperfry too expensive"
 
+  // Free-form user notes from the final step (soft preference signal, not a hard filter)
+  additionalNotes?: string
+
   // Room-aware context from vision analysis
   roomContext?: RoomContextSnapshot
 

@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import type { RecommendedItem, RecommendationResponse, UserContext } from '@/lib/types'
+import { sortRecommendations, type SortOption } from '@/lib/utils/sort-items'
 
 interface RecommendationMeta {
   summary: string
@@ -24,6 +25,7 @@ export function useFurnitureRecommendation() {
   const [compareMode, setCompareMode] = useState(false)
   const [compareItems, setCompareItems] = useState<string[]>([])
   const [priceFilter, setPriceFilter] = useState(45000)
+  const [sortBy, setSortBy] = useState<SortOption>('relevance')
 
   const getRecommendations = useCallback(async (ctx: UserContext) => {
     setLoading(true)
@@ -49,6 +51,7 @@ export function useFurnitureRecommendation() {
         contextInsights: data.contextInsights ?? [],
         flaggedIssues: data.flaggedIssues ?? [],
       })
+      return data
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : 'Failed to get recommendations'
       setError(message)
@@ -59,15 +62,14 @@ export function useFurnitureRecommendation() {
   }, [])
 
   const toggleCompare = useCallback((itemId: string) => {
-    setCompareItems(current => {
-      if (current.includes(itemId)) {
-        return current.filter(id => id !== itemId)
-      } else if (current.length < 2) {
-        return [...current, itemId]
-      }
-      return current
-    })
+    setCompareItems(current =>
+      current.includes(itemId)
+        ? current.filter(id => id !== itemId)
+        : [...current, itemId]
+    )
   }, [])
+
+  const sortedResults = sortRecommendations(results, sortBy)
 
   const resetRecommendations = useCallback(() => {
     setResults([])
@@ -75,10 +77,11 @@ export function useFurnitureRecommendation() {
     setError('')
     setCompareItems([])
     setCompareMode(false)
+    setSortBy('relevance')
   }, [])
 
   return {
-    results,
+    results: sortedResults,
     meta,
     loading,
     error,
@@ -87,6 +90,8 @@ export function useFurnitureRecommendation() {
     compareItems,
     priceFilter,
     setPriceFilter,
+    sortBy,
+    setSortBy,
     getRecommendations,
     toggleCompare,
     resetRecommendations,

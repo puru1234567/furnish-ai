@@ -15,6 +15,19 @@ export function LandingHero() {
           <button className="secondary" onClick={() => { /* TODO: scroll to features */ }}>▶ See how it works</button>
         </div>
 
+        <div className="hero-stat-rail">
+          <div className="hero-stat-card">
+            <span className="hero-stat-label">Room-aware</span>
+            <strong>4 views</strong>
+            <span>Upload a few angles and let AI read layout, palette, and constraints.</span>
+          </div>
+          <div className="hero-stat-card accent">
+            <span className="hero-stat-label">Shortlist quality</span>
+            <strong>Why it fits</strong>
+            <span>Every recommendation arrives with reasoning, not just ranking.</span>
+          </div>
+        </div>
+
         <div className="social-proof">
           <div className="avatars">
             <div className="av" style={{ background: '#B8935A' }}>AS</div>
@@ -27,6 +40,10 @@ export function LandingHero() {
       </div>
 
       <div className="hero-right">
+        <div className="hero-ambient-card hero-ambient-top">
+          <span className="hero-ambient-kicker">Room read</span>
+          <strong>Warm neutrals · open walkway · modern profile</strong>
+        </div>
         <div className="hero-room-card">
           <div className="hrc-img">
             🛋️
@@ -41,6 +58,10 @@ export function LandingHero() {
             <div className="hrc-price">₹32,500</div>
             <div className="hrc-rating">★ 4.8 · 218 reviews</div>
           </div>
+        </div>
+        <div className="hero-ambient-card hero-ambient-bottom">
+          <span className="hero-ambient-kicker">Decision support</span>
+          <strong>Budget, room, delivery city, and preferences stay in sync.</strong>
         </div>
       </div>
     </section>

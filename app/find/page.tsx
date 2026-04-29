@@ -1,9 +1,10 @@
 'use client'
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { FindStepQuestions } from './components/FindStepQuestions'
 import { FindStepRoomDetails } from './components/FindStepRoomDetails'
-import { FindStepSelection } from './components/FindStepSelection'
+import { FindStepPromptIntake } from './components/FindStepPromptIntake'
 import { ResultsDisplay } from './components/ResultsDisplay'
 import type { FormData, PhotoSlotId } from './find-page-model'
 import type {
@@ -18,7 +19,6 @@ import type {
 import {
   FURNITURE_TYPES,
   ROOM_OPTIONS,
-  GUIDE_MESSAGES,
   INVENTORY_COUNTS,
   STYLES,
   MATERIAL_AVOIDANCES,
@@ -46,14 +46,22 @@ import {
   useRoomAnalysisFlow,
   usePageNavigation,
   useFurnitureRecommendation,
-  usePassiveContext,
   useLoadingAnimation,
   useKeyboardNavigation,
 } from './hooks'
 
 export default function FindPage() {
   // Form state
+  const router = useRouter()
   const [form, setForm] = useState<FormData>(DEFAULTS)
+  const sectionRefs = useRef<Record<'room' | 'questions' | 'budget' | 'refine' | 'results', HTMLDivElement | null>>({
+    room: null,
+    questions: null,
+    budget: null,
+    refine: null,
+    results: null,
+  })
+  const roomAutoAdvanceRef = useRef(false)
 
   // Micro-response toasts
   const { microResponse, showMicroResponse } = useMicroResponse()
@@ -104,8 +112,6 @@ export default function FindPage() {
     decrementQuestionSubIndex,
     stepRef,
     questionSubIndexRef,
-    stepEnteredAt,
-    hesitations,
   } = usePageNavigation()
 
   // Recommendation API + results
@@ -119,13 +125,12 @@ export default function FindPage() {
     compareItems,
     priceFilter,
     setPriceFilter,
+    sortBy,
+    setSortBy,
     getRecommendations,
     toggleCompare,
     resetRecommendations,
   } = useFurnitureRecommendation()
-
-  // Analytics context
-  const passiveCtx = usePassiveContext()
 
   // Loading animation
   const loadingStageIndex = useLoadingAnimation(loading)
@@ -223,6 +228,12 @@ export default function FindPage() {
 
   // Submit and get recommendations
   const submit = useCallback(async () => {
+    if (!form.furnitureType) {
+      setStep(0)
+      showMicroResponse('Furniture type missing', 'Tell us which furniture item you want before continuing.', 'error')
+      return
+    }
+
     setStep(99)
     try {
       const roomSqftFromAnalysis = roomAnalysis?.estimatedWidthFt && roomAnalysis?.estimatedDepthFt
@@ -243,6 +254,7 @@ export default function FindPage() {
         stylePreference: [] as StyleTag[],
         useCase: [],
         alreadyRejected: '',
+        additionalNotes: form.additionalNotes.trim() || undefined,
         roomContext: roomAnalysis
           ? {
               summary: roomAnalysis.roomSummary,
@@ -257,8 +269,23 @@ export default function FindPage() {
         rankingPriority: 'quality' as RankingPriority,
       }
 
-      await getRecommendations(ctx)
-      setStep(100)
+      const data = await getRecommendations(ctx)
+      try {
+        sessionStorage.setItem('furnish_ai_results', JSON.stringify({
+          results: data?.items ?? [],
+          meta: {
+            summary: data?.summary ?? '',
+            archetypeLabel: data?.archetypeLabel ?? '',
+            contextInsights: data?.contextInsights ?? [],
+            flaggedIssues: data?.flaggedIssues ?? [],
+          },
+          form,
+          roomAnalysis,
+        }))
+      } catch {
+        // ignore serialisation errors — navigate anyway
+      }
+      router.push('/result')
     } catch (e: unknown) {
       console.error('[submit]', e)
       setStep(101)
@@ -274,6 +301,7 @@ export default function FindPage() {
     resetAnalysis()
     resetRecommendations()
     setQuestionSubIndex(0)
+    roomAutoAdvanceRef.current = false
   }, [setStep, setRoomPhotos, setPhotoPreviews, resetAnalysis, resetRecommendations, setQuestionSubIndex])
 
   // Derived display values
@@ -281,12 +309,8 @@ export default function FindPage() {
     ? `✦ ${INVENTORY_COUNTS[form.furnitureType] ?? 247} ${form.furnitureType}s in ${form.city}`
     : '✦ 247 items available'
   const echoLine = form.furnitureType
-    ? `${INVENTORY_COUNTS[form.furnitureType] ?? '—'} ${form.furnitureType}s · ${form.roomType} · ${form.city}`
+    ? `${INVENTORY_COUNTS[form.furnitureType] ?? '—'} ${getFurnitureLabel(form.furnitureType)} options · ${form.city}`
     : ''
-  const currentGuide = GUIDE_MESSAGES[step] ?? GUIDE_MESSAGES[0]
-  const guideSuffix = step === 2 && contextualQuestions[questionSubIndex]?.reasoning
-    ? contextualQuestions[questionSubIndex].reasoning!
-    : currentGuide.why
   const selectedContextualCount = Object.keys(form.contextualAnswers).length
   const currentQuestion = contextualQuestions[questionSubIndex]
   const currentQuestionAnswer = currentQuestion ? form.contextualAnswers[currentQuestion.id] : undefined
@@ -298,326 +322,356 @@ export default function FindPage() {
     'Packaging primary and stretch picks for review',
   ]
 
+  useEffect(() => {
+    if (step === 0 || step === 99 || step === 101) return
+
+    const targetKey: 'room' | 'questions' | 'budget' | 'refine' | 'results' =
+      step === 1 ? 'room'
+      : step === 2 ? 'questions'
+      : step === 3 ? 'budget'
+      : step === 4 ? 'refine'
+      : 'results'
+
+    const target = sectionRefs.current[targetKey]
+    if (!target) return
+
+    const timeout = window.setTimeout(() => {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 280)
+
+    return () => window.clearTimeout(timeout)
+  }, [step])
+
+  useEffect(() => {
+    if (step !== 1) {
+      roomAutoAdvanceRef.current = false
+      return
+    }
+
+    const shouldAutoAdvance = photoCount > 0 && !!roomAnalysis && !analysisLoading && !questionsLoading
+    if (!shouldAutoAdvance || roomAutoAdvanceRef.current) return
+
+    roomAutoAdvanceRef.current = true
+    const timeout = window.setTimeout(() => next(), 520)
+    return () => window.clearTimeout(timeout)
+  }, [step, photoCount, roomAnalysis, analysisLoading, questionsLoading, next])
+
   // Render
   return (
     <>
       <header className="site-header">
         <div className="logo">Furnish<span>AI</span></div>
-        <Link href="/" className="btn-skip">← Back to home</Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <Link href="/" className="btn-skip">← Back to home</Link>
+        </div>
       </header>
 
       {step === 0 && (
-        <FindStepSelection
-          form={form}
-          microResponse={microResponse}
+        <FindStepPromptIntake
+          initialBudget={form.budget}
           livePillText={livePillText}
-          furnitureTypes={FURNITURE_TYPES}
-          roomOptions={ROOM_OPTIONS}
-          inventoryCounts={INVENTORY_COUNTS}
-          getFurnitureLabel={getFurnitureLabel}
-          onSelectFurniture={furnitureType => {
+          onConfirm={({ furnitureType, budget, requestText }) => {
             set('furnitureType', furnitureType)
+            set('budget', budget)
+            set('budgetMax', Math.max(budget, Math.round(budget * 1.5)))
             const selected = FURNITURE_TYPES.find(item => item.id === furnitureType)
-            showMicroResponse('Furniture locked in', `I’ll start from ${INVENTORY_COUNTS[furnitureType] ?? 247} ${selected?.label.toLowerCase() ?? furnitureType} options and narrow from there.`, 'success')
-          }}
-          onSelectRoom={roomType => {
-            set('roomType', roomType)
-            showMicroResponse('Room context added', `${getFurnitureLabel(form.furnitureType || 'furniture')} · ${roomType}`, 'success')
-            setTimeout(next, 380)
-          }}
-          onContinueManual={next}
-        />
-      )}
-
-      {step === 1 && (
-        <FindStepRoomDetails
-          form={form}
-          livePillText={livePillText}
-          echoLine={echoLine}
-          photoSlots={PHOTO_SLOTS}
-          photoCount={photoCount}
-          allPhotosUploaded={allPhotosUploaded}
-          photoPreviews={photoPreviews}
-          roomAnalysis={roomAnalysis}
-          analysisLoading={analysisLoading}
-          analysisError={analysisError}
-          questionsLoading={questionsLoading}
-          contextualQuestions={contextualQuestions}
-          isDraggingSlot={isDraggingSlot}
-          slotInputRefs={slotInputRefs}
-          wallColors={WALL_COLORS}
-          floorTypes={FLOOR_TYPES}
-          roomLayouts={ROOM_LAYOUTS}
-          getAnalysisLabel={getAnalysisLabel}
-          getAnalysisText={getAnalysisText}
-          onPhotoChange={handlePhotoFile}
-          onSlotDrop={handleSlotDrop}
-          onDragOverSlot={setIsDraggingSlot}
-          onDragLeaveSlot={() => setIsDraggingSlot(null)}
-          onClearPhoto={clearPhoto}
-          onRetryAnalysis={() => {
-            const previews = Object.values(photoPreviews).filter(Boolean) as string[]
-            if (previews.length === 4) {
-              void triggerRoomAnalysis(form.furnitureType, form.roomType)
+            showMicroResponse(
+              'Request understood',
+              `${selected?.label ?? furnitureType} around ${fmt(budget)}. Next, show us your room photos so we can derive the rest.`,
+              'success'
+            )
+            if (requestText.trim()) {
+              set('additionalNotes', requestText.trim())
             }
+            setTimeout(next, 520)
           }}
-          onSetField={set}
-          onBack={back}
-          onSkip={next}
-          onContinue={() => { void continueFromRoomStep() }}
         />
       )}
 
-      {step === 2 && (
-        <FindStepQuestions
-          form={form}
-          livePillText={livePillText}
-          echoLine={echoLine}
-          furnitureTypeLabel={form.furnitureType}
-          selectedContextualCount={selectedContextualCount}
-          contextualQuestions={contextualQuestions}
-          questionSubIndex={questionSubIndex}
-          questionsLoading={questionsLoading}
-          questionsError={questionsError}
-          getQuestionOptionLabel={getQuestionOptionLabel}
-          onRetry={() => { void generateContextualQuestions(roomAnalysis, form.furnitureType, form.roomType) }}
-          onSelectAnswer={(questionId, optionId, questionText, optionLabel) => {
-            set('contextualAnswers', { ...form.contextualAnswers, [questionId]: optionId })
-            showMicroResponse('Answer saved', `${questionText} → ${optionLabel}`, 'success')
-            setTimeout(() => {
-              if (questionSubIndex < contextualQuestions.length - 1) {
-                incrementQuestionSubIndex()
-              } else {
-                next()
-              }
-            }, 320)
-          }}
-          onPreviousQuestion={decrementQuestionSubIndex}
-          onBack={back}
-          onContinue={next}
-        />
-      )}
-
-      {/* ═════════════════════════════════
-          STEP 3: BUDGET & CONSTRAINTS
-          (Matches HTML Step 4 exactly)
-          ═════════════════════════════════ */}
-      {step === 3 && (
-        <div className="page active">
-          {/* PROGRESS BAR */}
-          <div className="form-chrome">
-            <div className="progress-steps">
-              <div className="step-dot done">✓</div>
-              <div className="step-line done"></div>
-              <div className="step-dot done">✓</div>
-              <div className="step-line done"></div>
-              <div className="step-dot done">✓</div>
-              <div className="step-line done"></div>
-              <div className="step-dot active">4</div>
-              <div className="step-line"></div>
-              <div className="step-dot pending">5</div>
+      {step > 0 && step < 99 && (
+        <div className="progressive-flow-shell">
+          <div className="form-body progressive-intake-summary-wrap">
+            <div className="progressive-intake-summary">
+              <div>
+                <div className="results-story-label">What the system understood first</div>
+                <div className="progressive-intake-title">{getFurnitureLabel(form.furnitureType)} around {fmt(form.budget)}</div>
+                <div className="progressive-intake-sub">The room photos and follow-up questions below will derive room type, style, and constraints more accurately than asking you to pre-select them.</div>
+              </div>
+              <div className="understanding-tags" style={{ justifyContent: 'flex-end' }}>
+                <span className="understanding-tag">{getFurnitureLabel(form.furnitureType)}</span>
+                <span className="understanding-tag">{fmt(form.budget)}</span>
+              </div>
             </div>
-            <div className="live-count">{livePillText}</div>
           </div>
 
-          {/* FORM CONTENT */}
-          <div className="form-body">
-            {echoLine && <div className="echo-panel">{echoLine}</div>}
-            <div className="form-eyebrow">Step 4 of 5</div>
-            <h2 className="form-title">Budget & when you need it</h2>
-
-            <div className="understanding-card success">
-              <div className="understanding-title">Targeting around {fmt(form.budget)}</div>
-              
-              <div className="understanding-tags">
-                <span className="understanding-tag">~{budgetFitEstimate} items in range</span>
-                <span className="understanding-tag">{form.timeline}</span>
-                <span className="understanding-tag">{form.deliveryPreference}</span>
-              </div>
-            </div>
-
-            {/* BUDGET SLIDER */}
-            <div className="slider-wrap">
-              <div className="slider-value">
-                ₹<span id="sliderVal">{form.budget.toLocaleString('en-IN')}</span> <span>max budget</span>
-              </div>
-              <div className="slider-labels">
-                <span>₹5,000</span>
-                <span>₹5 lakh</span>
-              </div>
-              <input
-                type="range"
-                min="5000"
-                max="500000"
-                step="1000"
-                value={form.budget}
-                onChange={e => set('budget', Number(e.target.value))}
-              />
-              <div className="slider-hint">
-                ↑ Most sofas matching your filters: ₹22k – ₹38k · <span id="sliderCount">34</span> items in range
-              </div>
-            </div>
-
-            {/* BUDGET FLEXIBILITY */}
-            <div className="section-label">Budget flexibility</div>
-            <div className="budget-split">
-              {BUDGET_OPTIONS.map((opt, idx) => (
-                <button
-                  key={idx}
-                  className={`budget-option ${form.budgetFlexibility === opt.label ? 'selected' : ''}`}
-                  onClick={() => set('budgetFlexibility', opt.label)}
-                >
-                  <div className="bo-title">{opt.label}</div>
-                  <div className="bo-sub">{opt.desc}</div>
-                </button>
-              ))}
-            </div>
-
-            {/* TIMELINE */}
-            <div className="section-label">When do you need it?</div>
-            <div className="toggle-grid">
-              {TIMELINES.map((t, idx) => (
-                <button
-                  key={idx}
-                  className={`toggle-chip ${form.timeline === t ? 'selected' : ''}`}
-                  onClick={() => set('timeline', t)}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-
-            {/* DELIVERY PREFERENCE */}
-            <div className="section-label">Delivery preference</div>
-            <div className="toggle-grid">
-              {DELIVERIES.map((d, idx) => (
-                <button
-                  key={idx}
-                  className={`toggle-chip ${form.deliveryPreference === d ? 'selected' : ''}`}
-                  onClick={() => set('deliveryPreference', d)}
-                >
-                  {d}
-                </button>
-              ))}
-            </div>
-
-            {/* BUTTONS */}
-            <div className="btn-row">
-              <button className="btn-back" onClick={back}>
-                ← Back
-              </button>
-              <button className="btn-next" onClick={next}>
-                Continue → <span>Final touches</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ═════════════════════════════════
-          STEP 4: REFINEMENTS (OPTIONAL)
-          (Matches HTML Step 5 exactly)
-          ═════════════════════════════════ */}
-      {step === 4 && (
-        <div className="page active">
-          {/* PROGRESS BAR */}
-          <div className="form-chrome">
-            <div className="progress-steps">
-              <div className="step-dot done">✓</div>
-              <div className="step-line done"></div>
-              <div className="step-dot done">✓</div>
-              <div className="step-line done"></div>
-              <div className="step-dot done">✓</div>
-              <div className="step-line done"></div>
-              <div className="step-dot done">✓</div>
-              <div className="step-line done"></div>
-              <div className="step-dot active">5</div>
-            </div>
-            <div className="live-count">{livePillText}</div>
-          </div>
-
-          {/* FORM CONTENT */}
-          <div className="form-body">
-            {echoLine && <div className="echo-panel">{echoLine}</div>}
-            <div className="form-eyebrow">Step 5 of 5 — optional</div>
-            <h2 className="form-title">Fine-tune <span className="optional-tag">all optional — skip to results</span></h2>
-
-            {/* MATERIALS TO AVOID */}
-            <div className="section-label">Materials to avoid</div>
-            <div className="toggle-grid">
-              {MATERIAL_AVOIDANCES.map((m, idx) => (
-                <button
-                  key={idx}
-                  className={`toggle-chip ${form.materialsToAvoid.includes(m) ? 'selected' : ''}`}
-                  onClick={() => toggleArray('materialsToAvoid', m)}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-
-            <div className="divider"></div>
-
-            {/* AESTHETIC STYLE */}
-            <div className="section-label">Aesthetic style <span className="optional-tag">optional</span></div>
-            <div className="chip-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
-              {STYLES.map(s => (
-                <button
-                  key={s.id}
-                  className={`chip ${form.aestheticStyle === s.id ? 'selected' : ''}`}
-                  onClick={() => set('aestheticStyle', s.id)}
-                >
-                  <span className="chip-icon">{s.icon}</span>
-                  <span className="chip-label">{s.label}</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="divider"></div>
-
-            {/* TRUSTED BRANDS */}
-            <div className="section-label">Brands you trust (or avoid) <span className="optional-tag">optional</span></div>
-            <div className="toggle-grid" style={{ marginBottom: '8px' }}>
-              {BRANDS.map((b, idx) => (
-                <button
-                  key={idx}
-                  className={`toggle-chip ${form.trustedBrands.includes(b) ? 'selected' : ''}`}
-                  onClick={() => toggleArray('trustedBrands', b)}
-                >
-                  {b}
-                </button>
-              ))}
-            </div>
-
-
-            <div className="divider"></div>
-
-            {/* ADDITIONAL NOTES */}
-            <div className="text-input-wrap">
-              <label>Anything else we should know? <span className="optional-tag">optional freetext</span></label>
-              <textarea
-                rows={3}
-                placeholder="e.g. I need it to fit a corner wall, or my cat will scratch anything with texture"
-                value={form.additionalNotes}
-                onChange={e => set('additionalNotes', e.target.value)}
+          {step === 1 && (
+            <div ref={element => { sectionRefs.current.room = element }} className="progressive-section active">
+              <FindStepRoomDetails
+                form={form}
+                livePillText={livePillText}
+                echoLine={echoLine}
+                showProgress={false}
+                photoSlots={PHOTO_SLOTS}
+                photoCount={photoCount}
+                allPhotosUploaded={allPhotosUploaded}
+                photoPreviews={photoPreviews}
+                roomAnalysis={roomAnalysis}
+                analysisLoading={analysisLoading}
+                analysisError={analysisError}
+                questionsLoading={questionsLoading}
+                contextualQuestions={contextualQuestions}
+                isDraggingSlot={isDraggingSlot}
+                slotInputRefs={slotInputRefs}
+                wallColors={WALL_COLORS}
+                floorTypes={FLOOR_TYPES}
+                roomLayouts={ROOM_LAYOUTS}
+                getAnalysisLabel={getAnalysisLabel}
+                getAnalysisText={getAnalysisText}
+                onPhotoChange={handlePhotoFile}
+                onSlotDrop={handleSlotDrop}
+                onDragOverSlot={setIsDraggingSlot}
+                onDragLeaveSlot={() => setIsDraggingSlot(null)}
+                onClearPhoto={clearPhoto}
+                onRetryAnalysis={() => {
+                  const previews = Object.values(photoPreviews).filter(Boolean) as string[]
+                  if (previews.length === 4) {
+                    void triggerRoomAnalysis(form.furnitureType, form.roomType)
+                  }
+                }}
+                onSetField={set}
+                onBack={back}
+                onSkip={next}
+                onContinue={() => { void continueFromRoomStep() }}
               />
             </div>
+          )}
 
-            {/* BUTTONS */}
-            <div className="btn-row">
-              <button className="btn-back" onClick={back}>
-                ← Back
-              </button>
-              <button
-                className="btn-next"
-                onClick={submit}
-                disabled={loading}
-                style={{ fontSize: '15px', padding: '15px 36px', background: 'var(--charcoal)' }}
-              >
-                {loading ? '⏳ Finding...' : '✦ Get my recommendations'}
-              </button>
+          {step >= 2 && (
+            <div ref={element => { sectionRefs.current.questions = element }} className={`progressive-section ${step === 2 ? 'active' : 'completed'}`}>
+              <FindStepQuestions
+                form={form}
+                livePillText={livePillText}
+                echoLine={echoLine}
+                showProgress={false}
+                furnitureTypeLabel={form.furnitureType}
+                selectedContextualCount={selectedContextualCount}
+                roomAnalysis={roomAnalysis}
+                contextualQuestions={contextualQuestions}
+                questionSubIndex={questionSubIndex}
+                questionsLoading={questionsLoading}
+                questionsError={questionsError}
+                getAnalysisLabel={getAnalysisLabel}
+                getAnalysisText={getAnalysisText}
+                getQuestionOptionLabel={getQuestionOptionLabel}
+                onRetry={() => { void generateContextualQuestions(roomAnalysis, form.furnitureType, form.roomType) }}
+                onSelectAnswer={(questionId, optionId, questionText, optionLabel) => {
+                  set('contextualAnswers', { ...form.contextualAnswers, [questionId]: optionId })
+                  showMicroResponse('Answer saved', `${questionText} → ${optionLabel}`, 'success')
+                  setTimeout(() => {
+                    if (questionSubIndex < contextualQuestions.length - 1) {
+                      incrementQuestionSubIndex()
+                    } else {
+                      next()
+                    }
+                  }, 320)
+                }}
+                onPreviousQuestion={decrementQuestionSubIndex}
+                onBack={back}
+                onContinue={next}
+              />
             </div>
-          </div>
+          )}
+
+          {step >= 3 && (
+            <div ref={element => { sectionRefs.current.budget = element }} className={`progressive-section ${step === 3 ? 'active' : 'completed'}`}>
+              <div className="page active">
+                <div className="form-body journey-form-body">
+                  {echoLine && <div className="echo-panel">{echoLine}</div>}
+                  <div className="form-eyebrow">Step 4 of 5</div>
+                  <h2 className="form-title">Delivery fit and budget guardrails</h2>
+
+                  <div className="journey-spotlight journey-step-spotlight">
+                    <div className="journey-spotlight-copy">
+                      <div className="journey-spotlight-label">Guardrails, not friction</div>
+                      <div className="journey-spotlight-title">Set the ceiling once, then tell us how flexible the shortlist can be.</div>
+                      <div className="journey-spotlight-sub">
+                        This step borrows from strong checkout UX: keep the decision surface small, surface clear defaults, and explain exactly what these controls change before asking for input.
+                      </div>
+                    </div>
+                    <div className="journey-spotlight-rail">
+                      <div className="journey-mini-card">
+                        <span className="journey-mini-kicker">Budget</span>
+                        <strong>{fmt(form.budget)} anchor</strong>
+                        <span>Your original target remains the center of the recommendation score.</span>
+                      </div>
+                      <div className="journey-mini-card">
+                        <span className="journey-mini-kicker">Timeline</span>
+                        <strong>{form.timeline}</strong>
+                        <span>Urgency affects stock and delivery weighting so the list stays practical.</span>
+                      </div>
+                      <div className="journey-mini-card accent">
+                        <span className="journey-mini-kicker">Delivery</span>
+                        <strong>{form.deliveryPreference}</strong>
+                        <span>White-glove vs standard delivery changes which options feel realistic.</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="understanding-card success">
+                    <div className="understanding-title">Your budget anchor stays at {fmt(form.budget)}</div>
+                    <div className="understanding-body">
+                      We already captured your target spend. Only tell us how strict that ceiling is and how fast you need the item.
+                    </div>
+                    <div className="understanding-tags">
+                      <span className="understanding-tag">~{budgetFitEstimate} items in range</span>
+                      <span className="understanding-tag">{form.timeline}</span>
+                      <span className="understanding-tag">{form.deliveryPreference}</span>
+                    </div>
+                  </div>
+
+                  <div className="section-label">Budget flexibility</div>
+                  <div className="budget-split">
+                    {BUDGET_OPTIONS.map((opt, idx) => (
+                      <button
+                        key={idx}
+                        className={`budget-option ${form.budgetFlexibility === opt.label ? 'selected' : ''}`}
+                        onClick={() => set('budgetFlexibility', opt.label)}
+                      >
+                        <div className="bo-title">{opt.label}</div>
+                        <div className="bo-sub">{opt.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="section-label">When do you need it?</div>
+                  <div className="toggle-grid">
+                    {TIMELINES.map((t, idx) => (
+                      <button
+                        key={idx}
+                        className={`toggle-chip ${form.timeline === t ? 'selected' : ''}`}
+                        onClick={() => set('timeline', t)}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="section-label">Delivery preference</div>
+                  <div className="toggle-grid">
+                    {DELIVERIES.map((d, idx) => (
+                      <button
+                        key={idx}
+                        className={`toggle-chip ${form.deliveryPreference === d ? 'selected' : ''}`}
+                        onClick={() => set('deliveryPreference', d)}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="btn-row">
+                    <button className="btn-back" onClick={back}>← Back</button>
+                    <button className="btn-next" onClick={next}>Continue → <span>Final touches</span></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step >= 4 && (
+            <div ref={element => { sectionRefs.current.refine = element }} className={`progressive-section ${step === 4 ? 'active' : 'completed'}`}>
+              <div className="page active">
+                <div className="form-body journey-form-body">
+                  {echoLine && <div className="echo-panel">{echoLine}</div>}
+                  <div className="form-eyebrow">Step 5 of 5 — optional</div>
+                  <h2 className="form-title">Fine-tune <span className="optional-tag">all optional — skip to results</span></h2>
+
+                  <div className="journey-spotlight journey-step-spotlight">
+                    <div className="journey-spotlight-copy">
+                      <div className="journey-spotlight-label">Polish the shortlist</div>
+                      <div className="journey-spotlight-title">Add a little taste and brand bias, or skip straight to results.</div>
+                      <div className="journey-spotlight-sub">
+                        This final pass is intentionally optional. It works more like editorial tuning than a required form, so the user can either refine the mood or keep momentum and go straight to recommendations.
+                      </div>
+                    </div>
+                    <div className="journey-spotlight-rail">
+                      <div className="journey-mini-card">
+                        <span className="journey-mini-kicker">Avoid</span>
+                        <strong>Materials to exclude</strong>
+                        <span>Fastest way to remove obvious mismatches before the shortlist is generated.</span>
+                      </div>
+                      <div className="journey-mini-card">
+                        <span className="journey-mini-kicker">Style</span>
+                        <strong>One aesthetic nudge</strong>
+                        <span>Use this when the room analysis is close but you want to push the mood in one direction.</span>
+                      </div>
+                      <div className="journey-mini-card accent">
+                        <span className="journey-mini-kicker">Brands</span>
+                        <strong>Trust shortcuts</strong>
+                        <span>Lean into brands you already like instead of re-explaining the preference in text.</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="section-label">Materials to avoid</div>
+                  <div className="toggle-grid">
+                    {MATERIAL_AVOIDANCES.map((m, idx) => (
+                      <button
+                        key={idx}
+                        className={`toggle-chip ${form.materialsToAvoid.includes(m) ? 'selected' : ''}`}
+                        onClick={() => toggleArray('materialsToAvoid', m)}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="divider"></div>
+
+                  <div className="section-label">Aesthetic style <span className="optional-tag">optional</span></div>
+                  <div className="chip-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
+                    {STYLES.map(s => (
+                      <button
+                        key={s.id}
+                        className={`chip ${form.aestheticStyle === s.id ? 'selected' : ''}`}
+                        onClick={() => set('aestheticStyle', s.id)}
+                      >
+                        <span className="chip-icon">{s.icon}</span>
+                        <span className="chip-label">{s.label}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="divider"></div>
+
+                  <div className="section-label">Brands you trust (or avoid) <span className="optional-tag">optional</span></div>
+                  <div className="toggle-grid" style={{ marginBottom: '8px' }}>
+                    {BRANDS.map((b, idx) => (
+                      <button
+                        key={idx}
+                        className={`toggle-chip ${form.trustedBrands.includes(b) ? 'selected' : ''}`}
+                        onClick={() => toggleArray('trustedBrands', b)}
+                      >
+                        {b}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="btn-row">
+                    <button className="btn-back" onClick={back}>← Back</button>
+                    <button
+                      className="btn-next"
+                      onClick={submit}
+                      disabled={loading}
+                      style={{ fontSize: '15px', padding: '15px 36px', background: 'var(--charcoal)' }}
+                    >
+                      {loading ? '⏳ Finding...' : '✦ Get my recommendations'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -660,40 +714,9 @@ export default function FindPage() {
         </div>
       )}
 
-      {/* ═════════════════════════════════
-          RESULTS PAGE (step 100)
-          ═════════════════════════════════ */}
-      {step === 100 && (
-        <ResultsDisplay
-          results={results}
-          meta={meta}
-          form={form}
-          roomAnalysis={roomAnalysis}
-          priceFilter={priceFilter}
-          compareMode={compareMode}
-          compareItems={compareItems}
-          onPriceFilterChange={setPriceFilter}
-          onCompareToggle={toggleCompare}
-          onCompareModeToggle={() => setCompareMode(!compareMode)}
-          onCityChange={city => set('city', city)}
-          onReset={reset}
-        />
-      )}
-
       {/* ✦ TOP PROGRESS BAR */}
       {step >= 0 && step <= 4 && (
         <div id="top-progress-bar" style={{ width: `${(step / 4) * 100}%` }} />
-      )}
-
-      {/* ✦ GUIDE BUBBLE — fixed bottom-left */}
-      {step >= 0 && step <= 4 && (
-        <div id="guide-bubble">
-          <div className="guide-avatar">✦</div>
-          <div className="guide-bubble-body">
-            <div className="guide-bubble-text">{currentGuide.main}</div>
-            <div className="guide-why">{guideSuffix}</div>
-          </div>
-        </div>
       )}
 
       {microResponse && step >= 0 && step <= 4 && (
@@ -701,24 +724,6 @@ export default function FindPage() {
           <div className="micro-response-label">System reply</div>
           <div className="micro-response-title">{microResponse.title}</div>
           <div className="micro-response-body">{microResponse.detail}</div>
-        </div>
-      )}
-
-      {/* ✦ PASSIVE CONTEXT HUD — fixed top-right */}
-      {passiveCtx && step >= 0 && step <= 4 && (
-        <div id="context-hud">
-          <div className="hud-row"><span className="hud-key">Device</span><span className="hud-val">{passiveCtx.device}</span></div>
-          <div className="hud-row"><span className="hud-key">Time</span><span className="hud-val">{passiveCtx.timeLabel}</span></div>
-          <div className="hud-row"><span className="hud-key">Session</span><span className="hud-val">{passiveCtx.isReturn ? 'Returning' : 'New'}</span></div>
-          <div className="hud-row"><span className="hud-key">Source</span><span className="hud-val">{passiveCtx.refSource}</span></div>
-          {Object.keys(hesitations.current).length > 0 && (
-            <div className="hud-row hud-hesit">
-              <span className="hud-key">Time per step</span>
-              <span className="hud-val">
-                {Object.entries(hesitations.current).map(([s, t]) => `Q${Number(s) + 1}: ${t.toFixed(1)}s`).join(' · ')}
-              </span>
-            </div>
-          )}
         </div>
       )}
     </>
