@@ -204,12 +204,12 @@ export function ResultsDisplay({
 
   return (
     <>
-      <div className="results-wrapper">
+      <div className="results-wrapper results-shell">
         <aside className={`results-sidebar ${mobileSidebarOpen ? 'mobile-open' : ''}`}>
           <div className="sidebar-shell">
-            <div className="sidebar-kicker">Refine the shortlist</div>
-            <div className="sidebar-title">A calmer fit for your {form.roomType.toLowerCase()}</div>
-            <div className="sidebar-sub">{results.length} options ranked around your budget, city, and room context.</div>
+            <div className="sidebar-kicker">Shortlist controls</div>
+            <div className="sidebar-title">Tune the room, not just the filters</div>
+            <div className="sidebar-sub">{results.length} options ranked around your room read, budget, city, and preference signals.</div>
           </div>
 
           <div className="sidebar-story-card">
@@ -275,7 +275,7 @@ export function ResultsDisplay({
             <div className="results-hero-panel">
               <div className="results-hero-copy">
                 <div className="results-kicker">Curated by FurnishAI</div>
-                <div className="results-title">Your top matches</div>
+                <div className="results-title">The shortlist your room can hold</div>
                 <div className="results-count">{results.length} results ranked for your room, budget, and taste signals.</div>
                 <div className="results-summary">{meta.summary}</div>
                 <div className="results-signal-row">
@@ -286,22 +286,22 @@ export function ResultsDisplay({
               </div>
               <div className="results-hero-aside">
                 <div className="results-stat-card highlight">
-                  <span className="results-stat-label">Best-fit picks</span>
+                  <span className="results-stat-label">Lead shortlist</span>
                   <strong>{visiblePrimaryResults.length}</strong>
-                  <span>Focused shortlist first, stretch upgrades second.</span>
+                  <span>Focused first picks before any stretch or compromise.</span>
                 </div>
                 <div className="results-stat-card">
-                  <span className="results-stat-label">Saved mood</span>
+                  <span className="results-stat-label">Saved contenders</span>
                   <strong>{wishlistCount}</strong>
-                  <span>Heart pieces you want to keep in the running.</span>
+                  <span>Keep promising pieces in play while you compare.</span>
                 </div>
               </div>
             </div>
 
             <div className="results-header">
               <div className="results-header-meta">
-                <div className="results-section-title">Shortlist controls</div>
-                <div className="results-section-copy">Sort, compare, save, or share without leaving the shortlist.</div>
+                <div className="results-section-title">Compare, save, or reshape the shortlist</div>
+                <div className="results-section-copy">Keep the decision surface tight while adjusting what the room can support.</div>
               </div>
               <div className="results-controls">
                 <div className="sort-dropdown-wrap">

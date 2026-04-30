@@ -489,44 +489,13 @@ export default function FindPage() {
                   {echoLine && <div className="echo-panel">{echoLine}</div>}
                   <div className="form-eyebrow">Step 4 of 5</div>
                   <h2 className="form-title">Delivery fit and budget guardrails</h2>
+                  <p className="form-sub">Keep your budget anchor, choose urgency, and move on.</p>
 
-                  <div className="journey-spotlight journey-step-spotlight">
-                    <div className="journey-spotlight-copy">
-                      <div className="journey-spotlight-label">Guardrails, not friction</div>
-                      <div className="journey-spotlight-title">Set the ceiling once, then tell us how flexible the shortlist can be.</div>
-                      <div className="journey-spotlight-sub">
-                        This step borrows from strong checkout UX: keep the decision surface small, surface clear defaults, and explain exactly what these controls change before asking for input.
-                      </div>
-                    </div>
-                    <div className="journey-spotlight-rail">
-                      <div className="journey-mini-card">
-                        <span className="journey-mini-kicker">Budget</span>
-                        <strong>{fmt(form.budget)} anchor</strong>
-                        <span>Your original target remains the center of the recommendation score.</span>
-                      </div>
-                      <div className="journey-mini-card">
-                        <span className="journey-mini-kicker">Timeline</span>
-                        <strong>{form.timeline}</strong>
-                        <span>Urgency affects stock and delivery weighting so the list stays practical.</span>
-                      </div>
-                      <div className="journey-mini-card accent">
-                        <span className="journey-mini-kicker">Delivery</span>
-                        <strong>{form.deliveryPreference}</strong>
-                        <span>White-glove vs standard delivery changes which options feel realistic.</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="understanding-card success">
-                    <div className="understanding-title">Your budget anchor stays at {fmt(form.budget)}</div>
-                    <div className="understanding-body">
-                      We already captured your target spend. Only tell us how strict that ceiling is and how fast you need the item.
-                    </div>
-                    <div className="understanding-tags">
-                      <span className="understanding-tag">~{budgetFitEstimate} items in range</span>
-                      <span className="understanding-tag">{form.timeline}</span>
-                      <span className="understanding-tag">{form.deliveryPreference}</span>
-                    </div>
+                  <div className="understanding-tags compact-step-tags">
+                    <span className="understanding-tag">{fmt(form.budget)} anchor</span>
+                    <span className="understanding-tag">~{budgetFitEstimate} in range</span>
+                    <span className="understanding-tag">{form.timeline}</span>
+                    <span className="understanding-tag">{form.deliveryPreference}</span>
                   </div>
 
                   <div className="section-label">Budget flexibility</div>
@@ -585,33 +554,7 @@ export default function FindPage() {
                   {echoLine && <div className="echo-panel">{echoLine}</div>}
                   <div className="form-eyebrow">Step 5 of 5 — optional</div>
                   <h2 className="form-title">Fine-tune <span className="optional-tag">all optional — skip to results</span></h2>
-
-                  <div className="journey-spotlight journey-step-spotlight">
-                    <div className="journey-spotlight-copy">
-                      <div className="journey-spotlight-label">Polish the shortlist</div>
-                      <div className="journey-spotlight-title">Add a little taste and brand bias, or skip straight to results.</div>
-                      <div className="journey-spotlight-sub">
-                        This final pass is intentionally optional. It works more like editorial tuning than a required form, so the user can either refine the mood or keep momentum and go straight to recommendations.
-                      </div>
-                    </div>
-                    <div className="journey-spotlight-rail">
-                      <div className="journey-mini-card">
-                        <span className="journey-mini-kicker">Avoid</span>
-                        <strong>Materials to exclude</strong>
-                        <span>Fastest way to remove obvious mismatches before the shortlist is generated.</span>
-                      </div>
-                      <div className="journey-mini-card">
-                        <span className="journey-mini-kicker">Style</span>
-                        <strong>One aesthetic nudge</strong>
-                        <span>Use this when the room analysis is close but you want to push the mood in one direction.</span>
-                      </div>
-                      <div className="journey-mini-card accent">
-                        <span className="journey-mini-kicker">Brands</span>
-                        <strong>Trust shortcuts</strong>
-                        <span>Lean into brands you already like instead of re-explaining the preference in text.</span>
-                      </div>
-                    </div>
-                  </div>
+                  <p className="form-sub">Optional only. Exclude obvious mismatches or add one taste bias, then get the shortlist.</p>
 
                   <div className="section-label">Materials to avoid</div>
                   <div className="toggle-grid">

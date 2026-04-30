@@ -83,6 +83,14 @@ Work through these questions:
 - Good candidates: page-load stagger, hover refinement, button feedback, sticky header transitions.
 - Motion should reinforce structure and quality.
 
+ ### Animations
+ Only ever animate these four properties in scroll animations — everything else will cause bugs:
+- transform (scale, translate, rotate)
+- opacity
+- filter (blur, brightness)
+- clip-path
+- Everything else — font-size, width, top, left, margin — triggers layout and breaks things. If you want something to look like it's changing size, use scale(). If you want it to look like it's moving, use translate(). Never touch the actual position properties mid-animation.
+
 ### Spatial Composition
 - Avoid default dashboard sameness.
 - Use asymmetry, overlap, intentional negative space, and card rhythm when useful.

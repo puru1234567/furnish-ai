@@ -72,42 +72,20 @@ export function FindStepPromptIntake({
       <FindProgressSteps currentStep={1} livePillText={livePillText} />
 
       <div className="form-body journey-form-body">
-        <div className="journey-spotlight">
-          <div className="journey-spotlight-copy">
-            <div className="journey-spotlight-label">Design-led discovery</div>
-            <div className="journey-spotlight-title">Tell us one thing you want. We will build the rest around your room.</div>
-            <div className="journey-spotlight-sub">Start with the furniture item and budget. The next steps use room photos and follow-up questions to shape a shortlist that feels intentional, not generic.</div>
-          </div>
-          <div className="journey-spotlight-rail">
-            <div className="journey-mini-card">
-              <span className="journey-mini-kicker">Step 1</span>
-              <strong>Item + budget</strong>
-              <span>Start with the one purchase you want right now.</span>
-            </div>
-            <div className="journey-mini-card">
-              <span className="journey-mini-kicker">Step 2</span>
-              <strong>Room context</strong>
-              <span>Upload views so the AI reads layout, color, and constraints.</span>
-            </div>
-            <div className="journey-mini-card accent">
-              <span className="journey-mini-kicker">Outcome</span>
-              <strong>Shortlist with reasons</strong>
-              <span>Get ranked recommendations with stretch options and trade-offs.</span>
-            </div>
-          </div>
-        </div>
-
         <div className="form-eyebrow">Step 1 of 5</div>
         <h2 className="form-title">Tell us what you want</h2>
         <p className="form-sub">
-          Start with one furniture item and your budget. We will infer the rest later from your room photos and follow-up questions.
+          Start with one furniture item and a realistic budget. We will use the room and follow-up answers to shape the shortlist after this.
         </p>
 
-        <div className="understanding-card intake-card">
-          <div className="understanding-title">One item at a time works best</div>
-          <div className="understanding-tags">
-            <span className="understanding-tag">Examples: “Need a compact sofa for around 30k”</span>
-            <span className="understanding-tag">“Looking for a desk under 18k”</span>
+        <div className="journey-inline-checks compact-intro-checks intake-card">
+          <div className="journey-inline-check">
+            <strong>Keep it narrow</strong>
+            <span>One item at a time gives a cleaner shortlist.</span>
+          </div>
+          <div className="journey-inline-check">
+            <strong>Example</strong>
+            <span>Need a compact sofa for around 30k.</span>
           </div>
         </div>
 

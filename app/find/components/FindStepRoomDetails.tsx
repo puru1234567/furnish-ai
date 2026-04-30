@@ -89,59 +89,12 @@ export function FindStepRoomDetails({
         {echoLine && <div className="echo-panel">{echoLine}</div>}
         <div className="form-eyebrow">Step 2 of 5</div>
         <h2 className="form-title">Tell us about your room</h2>
-        <p className="form-sub">Upload up to 4 room photos for AI analysis. If needed, add only rough room dimensions below.</p>
+        <p className="form-sub">Upload up to four photos. If not, add rough dimensions and continue.</p>
 
-        <div className="journey-spotlight journey-step-spotlight">
-          <div className="journey-spotlight-copy">
-            <div className="journey-spotlight-label">Room intelligence</div>
-            <div className="journey-spotlight-title">Show the room once. We will stop asking you to describe what the camera can already see.</div>
-            <div className="journey-spotlight-sub">
-              Inspired by calmer conversational flows, this step keeps the task narrow: upload a few views, let the AI read layout and palette, then move straight into the ranking questions that actually matter.
-            </div>
-          </div>
-          <div className="journey-spotlight-rail">
-            <div className="journey-mini-card">
-              <span className="journey-mini-kicker">Capture</span>
-              <strong>4 guided angles</strong>
-              <span>One wall per photo keeps the analysis grounded and reduces noisy follow-up.</span>
-            </div>
-            <div className="journey-mini-card">
-              <span className="journey-mini-kicker">Extract</span>
-              <strong>Layout, palette, constraints</strong>
-              <span>We use the room read to influence ranking, not just show a decorative summary.</span>
-            </div>
-            <div className="journey-mini-card accent">
-              <span className="journey-mini-kicker">Fallback</span>
-              <strong>Manual dimensions still work</strong>
-              <span>If photos are incomplete, you can continue with rough room size and keep going.</span>
-            </div>
-          </div>
-        </div>
-
-        <div className={`understanding-card ${roomAnalysis ? 'success' : ''}`}>
-          <div className="understanding-title">
-            {roomAnalysis
-              ? 'I have room context now'
-              : photoCount > 0
-                ? `${photoCount} room views captured`
-                : 'I can work from photos or your manual answers'}
-          </div>
-          <div className="understanding-tags">
-            <span className="understanding-tag">{photoCount}/4 photos</span>
-            {roomAnalysis?.lighting && <span className="understanding-tag">{getAnalysisText(roomAnalysis.lighting)}</span>}
-            {roomAnalysis?.spatialConstraints?.[0] && <span className="understanding-tag">{roomAnalysis.spatialConstraints[0]}</span>}
-          </div>
-        </div>
-
-        <div className="journey-inline-checks">
-          <div className="journey-inline-check">
-            <strong>Why photos first</strong>
-            <span>They answer room-type, obstruction, and styling questions faster than manual form fields.</span>
-          </div>
-          <div className="journey-inline-check">
-            <strong>What you get next</strong>
-            <span>The next step shows the extracted room context while asking only a few ranking questions.</span>
-          </div>
+        <div className="understanding-tags compact-step-tags">
+          <span className="understanding-tag">{photoCount}/4 photos</span>
+          {roomAnalysis?.lighting && <span className="understanding-tag">{getAnalysisText(roomAnalysis.lighting)}</span>}
+          {roomAnalysis?.spatialConstraints?.[0] && <span className="understanding-tag">{roomAnalysis.spatialConstraints[0]}</span>}
         </div>
 
         {photoSlots.map(slot => (
@@ -236,9 +189,7 @@ export function FindStepRoomDetails({
               <div className="analysis-badge">✦ Room read complete</div>
               <div className="analysis-confidence">{Math.round(roomAnalysis.confidenceScore * 100)}% confidence</div>
             </div>
-            <div className="analysis-sub">
-              Your room context is ready. We will show the extracted layout, constraints, and style signals in the next step while you answer the follow-up questions.
-            </div>
+            <div className="analysis-sub">Room context is ready. Next we ask only what the images cannot answer.</div>
           </div>
         )}
 
