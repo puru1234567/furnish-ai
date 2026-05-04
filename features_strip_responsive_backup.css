@@ -1,0 +1,49 @@
+﻿  .features-strip::before,
+  .story-line-extension {
+    display: none;
+  }
+  .features-story-shell {
+    padding: 24px 24px 56px;
+  }
+  .features-story-head {
+    margin: 0 0 40px;
+    width: auto;
+  }
+  .features-story-map {
+    padding-top: 0;
+  }
+  .features-story-path {
+    left: 18px;
+    width: 42px;
+  }
+  .story-row {
+    min-height: 0;
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 0 20px;
+    padding: 0 0 28px;
+    align-items: start;
+  }
+  .story-row--left .story-column--panel,
+  .story-row--right .story-column--panel {
+    grid-column: 2;
+    padding: 0;
+  }
+  .story-column--track {
+    grid-column: 1;
+    justify-content: flex-start;
+    padding-top: 10px;
+  }
+  .story-point {
+    width: auto;
+    min-width: 0;
+  }
+  .results-wrapper { grid-template-columns: 1fr; }
+  .results-sidebar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    top: auto;
+    width: 100%;
+    max-height: 0;
+    overflow-y: auto;

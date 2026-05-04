@@ -37,24 +37,21 @@ export function LandingHeader() {
         <span className="brand-wordmark-ai">AI</span>
       </Link>
 
-      <header className={`site-header${scrolled ? ' site-header--scrolled' : ''}${menuOpen ? ' site-header--menu-open' : ''}`}>
+      {/* Menu button — fixed on page, travels into header just like brand-wordmark */}
+      <button
+        className={`site-header-menu-btn${menuOpen ? ' site-header-menu-btn--open' : ''}${scrolled ? ' site-header-menu-btn--scrolled' : ''}`}
+        onClick={() => setMenuOpen(true)}
+        aria-label="Open navigation"
+      >
+        <span className="menu-btn-label">Menu</span>
+        <span className="menu-btn-icon" aria-hidden="true">
+          <span /><span />
+        </span>
+      </button>
+
+      <header className={`site-header site-header--landing${scrolled ? ' site-header--scrolled' : ''}${menuOpen ? ' site-header--menu-open' : ''}`}>
         {/* Invisible placeholder keeps the 3-column grid intact */}
         <div className="site-header-logo-placeholder" aria-hidden="true" />
-
-        <button
-          className={`site-header-menu-btn${menuOpen ? ' site-header-menu-btn--open' : ''}`}
-          onClick={() => setMenuOpen(true)}
-          aria-label="Open navigation"
-        >
-          <span className="menu-btn-label">Menu</span>
-          <span className="menu-btn-icon" aria-hidden="true">
-            <span /><span />
-          </span>
-        </button>
-
-        {/* <Link href="/find" className="site-header-cta">
-          Start
-        </Link> */}
       </header>
 
       {/* Full overlay nav */}

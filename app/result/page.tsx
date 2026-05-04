@@ -93,28 +93,6 @@ export default function ResultPage() {
         </div>
       </header>
 
-      <div className="result-context-bar">
-        <div className="result-context-inner">
-          {archetypeLabel && (
-            <div className="result-context-archetype">
-              <span className="result-context-label">Your match profile</span>
-              <span className="result-context-value">{archetypeLabel}</span>
-            </div>
-          )}
-          {leadingInsight && (
-            <div className="result-context-insight">
-              <span className="result-context-label">Key insight</span>
-              <span className="result-context-value">{leadingInsight}</span>
-            </div>
-          )}
-          <div className="result-context-signals">
-            {storySignals.map((s, i) => (
-              <span key={i} className="result-context-tag">{s}</span>
-            ))}
-          </div>
-        </div>
-      </div>
-
       <ResultsDisplay
         results={data.results}
         meta={data.meta}

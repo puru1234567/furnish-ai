@@ -390,19 +390,6 @@ export default function FindPage() {
 
       {step > 0 && step < 99 && (
         <div className="progressive-flow-shell">
-          <div className="form-body progressive-intake-summary-wrap">
-            <div className="progressive-intake-summary">
-              <div>
-                <div className="results-story-label">What the system understood first</div>
-                <div className="progressive-intake-title">{getFurnitureLabel(form.furnitureType)} around {fmt(form.budget)}</div>
-                <div className="progressive-intake-sub">The room photos and follow-up questions below will derive room type, style, and constraints more accurately than asking you to pre-select them.</div>
-              </div>
-              <div className="understanding-tags" style={{ justifyContent: 'flex-end' }}>
-                <span className="understanding-tag">{getFurnitureLabel(form.furnitureType)}</span>
-                <span className="understanding-tag">{fmt(form.budget)}</span>
-              </div>
-            </div>
-          </div>
 
           {step === 1 && (
             <div ref={element => { sectionRefs.current.room = element }} className="progressive-section active">

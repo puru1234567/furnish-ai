@@ -212,16 +212,6 @@ export function ResultsDisplay({
             <div className="sidebar-sub">{results.length} options ranked around your room read, budget, city, and preference signals.</div>
           </div>
 
-          <div className="sidebar-story-card">
-            <div className="sidebar-story-label">AI read</div>
-            <div className="sidebar-story-copy">{leadingInsight ?? meta.summary}</div>
-            <div className="sidebar-story-tags">
-              {storySignals.slice(0, 4).map(signal => (
-                <span key={signal} className="sidebar-story-tag">{signal}</span>
-              ))}
-            </div>
-          </div>
-
           <div className="sidebar-section">
             <div className="sl">Quick adjustments</div>
             <div className="refine-chip-stack">
@@ -331,7 +321,6 @@ export function ResultsDisplay({
                     </ul>
                   )}
                 </div>
-                <button type="button" className={`ctrl-btn ${compareMode ? 'active' : ''}`} onClick={onCompareModeToggle} title="Toggle compare mode">Compare mode</button>
                 <div className="ctrl-pill" title="Wishlist items">Wishlist {wishlistCount}</div>
                 <button type="button" className="ctrl-btn" onClick={handleSaveResults} title="Save these results">Save</button>
                 <button type="button" className="ctrl-btn" onClick={handleShareResults} title="Share results">Share</button>
@@ -345,6 +334,16 @@ export function ResultsDisplay({
               <button type="button" className="compare-mode-exit" onClick={onCompareModeToggle}>Exit</button>
             </div>
           )}
+
+          <div className="compare-float-wrap">
+            <button
+              type="button"
+              className={`compare-float-btn${compareMode ? ' active' : ''}`}
+              onClick={onCompareModeToggle}
+            >
+              {compareMode ? `⊡ Compare mode on · ${compareItems.length} selected` : '⊡ Compare items'}
+            </button>
+          </div>
 
           <div className="results-grid">
             {visiblePrimaryResults.map((item, idx) => renderResultCard(item, idx, 'primary'))}
