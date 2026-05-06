@@ -104,6 +104,10 @@ export function ResultsDisplay({
         <article key={item.id} className={`result-card stretch-card stretch-card-compact ${isCompared ? 'in-compare' : ''} ${isWishlisted ? 'in-wishlist' : ''}`}>
           <div className="rank-badge">↗ Stretch Pick</div>
           <div className="card-actions">
+            <div className="card-actions-price">
+              <div className="card-price">{fmt(item.price)}</div>
+              <div className="card-delivery">+{fmt(priceDelta)} over budget</div>
+            </div>
             <button
               type="button"
               className={`compare-check ${isCompared ? 'checked' : ''}`}
@@ -127,10 +131,6 @@ export function ResultsDisplay({
               <div>
                 <div className="card-brand">{item.brand}</div>
                 <div className="card-name">{item.name}</div>
-              </div>
-              <div className="stretch-card-price-wrap">
-                <div className="card-price">{fmt(item.price)}</div>
-                <div className="stretch-callout-price">+{fmt(priceDelta)}</div>
               </div>
             </div>
             {item.stretchJustification && (
@@ -159,6 +159,10 @@ export function ResultsDisplay({
           {index === 0 ? '✦ Best Match' : `✦ #${index + 1}`}
         </div>
         <div className="card-actions">
+          <div className="card-actions-price">
+            <div className="card-price">{fmt(item.price)}</div>
+            <div className="card-delivery">{form.city}</div>
+          </div>
           <button
             type="button"
             className={`compare-check ${isCompared ? 'checked' : ''}`}
@@ -191,10 +195,7 @@ export function ResultsDisplay({
             <span className="card-chip">{item.durabilityScore}/10 durability</span>
           </div>
           <div className="card-footer">
-            <div>
-              <div className="card-price">{fmt(item.price)}</div>
-              <div className="card-delivery">Delivery in 5-7 days · {form.city}</div>
-            </div>
+            <div className="card-delivery">Delivery in 5-7 days</div>
             <button type="button" className="card-cta" onClick={() => window.open(item.productUrl, '_blank')}>View piece →</button>
           </div>
         </div>
@@ -334,16 +335,6 @@ export function ResultsDisplay({
               <button type="button" className="compare-mode-exit" onClick={onCompareModeToggle}>Exit</button>
             </div>
           )}
-
-          <div className="compare-float-wrap">
-            <button
-              type="button"
-              className={`compare-float-btn${compareMode ? ' active' : ''}`}
-              onClick={onCompareModeToggle}
-            >
-              {compareMode ? `⊡ Compare mode on · ${compareItems.length} selected` : '⊡ Compare items'}
-            </button>
-          </div>
 
           <div className="results-grid">
             {visiblePrimaryResults.map((item, idx) => renderResultCard(item, idx, 'primary'))}

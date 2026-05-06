@@ -141,30 +141,6 @@ body {
   animation: none;
 }
 
-.progress-step-note {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 164px;
-  padding: 8px 12px;
-  border-radius: 18px;
-  background: rgba(255,255,255,.58);
-  border: 1px solid rgba(184,147,90,.16);
-  box-shadow: 0 10px 24px rgba(44,40,37,.04);
-}
-
-.progress-step-note strong {
-  font-size: 11px;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  color: var(--terracotta);
-}
-
-.progress-step-note span {
-  font-size: 12px;
-  color: var(--warm-grey);
-}
-
 .form-body {
   max-width: 880px;
   padding: 44px 24px 80px;
@@ -598,10 +574,6 @@ body {
 
   .live-count {
     white-space: normal;
-  }
-
-  .progress-step-note {
-    min-width: 0;
   }
 
   .journey-inline-checks {
@@ -1767,21 +1739,11 @@ input[type=range]::-moz-range-thumb {
   overflow-y: auto;
   overflow-x: hidden;
   height: 100%;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(44,40,37,.2) transparent;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
 }
 .results-main::-webkit-scrollbar {
-  width: 8px;
-}
-.results-main::-webkit-scrollbar-track {
-  background: transparent;
-}
-.results-main::-webkit-scrollbar-thumb {
-  background: rgba(44,40,37,.2);
-  border-radius: 4px;
-}
-.results-main::-webkit-scrollbar-thumb:hover {
-  background: rgba(44,40,37,.3);
+  display: none;
 }
 .results-header-shell {
   margin-bottom: 26px;
@@ -1972,8 +1934,33 @@ input[type=range]::-moz-range-thumb {
   top: 14px;
   right: 14px;
   display: flex;
+  align-items: center;
   gap: 8px;
   z-index: 3;
+  background: rgba(255,255,255,.82);
+  border-radius: 999px;
+  padding: 6px 8px 6px 14px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(28,25,23,.10);
+}
+
+.card-actions-price {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-right: 4px;
+}
+
+.card-actions-price .card-price {
+  font-size: 17px;
+  line-height: 1.1;
+  color: var(--charcoal);
+}
+
+.card-actions-price .card-delivery {
+  font-size: 10px;
+  color: var(--warm-grey);
+  white-space: nowrap;
 }
 
 .compare-check,
@@ -2148,15 +2135,15 @@ input[type=range]::-moz-range-thumb {
   }
 }
 
-/* COMPARE FAB (floating action button — center bottom) */
+/* COMPARE FAB (floating action button — center bottom of content column) */
 .compare-fab {
   position: fixed;
   bottom: 28px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: calc(320px + 28px);
+  right: 0;
   display: flex;
-  align-items: center;
-  gap: 10px;
+  justify-content: center;
+  pointer-events: none;
   z-index: 600;
 }
 .compare-fab-btn {
@@ -2169,6 +2156,7 @@ input[type=range]::-moz-range-thumb {
   padding: 14px 28px;
   border-radius: 40px;
   cursor: pointer;
+  pointer-events: auto;
   box-shadow: 0 16px 34px rgba(28,25,23,.18);
   transition: all .3s cubic-bezier(.22,1,.36,1);
   white-space: nowrap;
