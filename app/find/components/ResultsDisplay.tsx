@@ -58,6 +58,7 @@ export function ResultsDisplay({
   const visibleStretchResults = results
     .filter(item => item.tier === 'stretch' && !visiblePrimaryResults.some(primary => primary.id === item.id))
     .slice(0, 2)
+  const hasStretchResults = results.some(item => item.tier === 'stretch')
   const compareItemObjects = results.filter(r => compareItems.includes(r.id))
   const activeSortLabel = SORT_OPTIONS.find(o => o.value === sortBy)?.label ?? 'Best Match'
   const wishlistCount = wishlistItems.length
@@ -68,6 +69,66 @@ export function ResultsDisplay({
     selectedContextualCount > 0 ? `${selectedContextualCount} answer signals` : undefined,
   ].filter(Boolean) as string[]
   const leadingInsight = meta.contextInsights[0] ?? meta.flaggedIssues[0] ?? null
+  const contextualSignal = Object.values(form.contextualAnswers).find(Boolean)
+    ?? form.mustHaveFeatures[0]
+    ?? form.painPoint[0]?.replace(/_/g, ' ')
+    ?? form.additionalNotes
+    ?? null
+  const spatialSignal = roomAnalysis?.spatialConstraints?.[0] ?? null
+
+  const cleanSignal = useCallback((value: string) => {
+    const normalized = value
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase()
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1)
+  }, [])
+
+  const buildWhyCopy = useCallback((item: RecommendedItem, variant: 'primary' | 'stretch') => {
+    const roomSentence = spatialSignal
+      ? `Works well with ${cleanSignal(spatialSignal).toLowerCase()}.`
+      : `Keeps the ${form.roomType.toLowerCase()} feeling open and usable.`
+
+    if (variant === 'stretch') {
+      const upgradeSentence = item.durabilityScore >= 8
+        ? 'It earns the stretch with one of the strongest quality scores in this set.'
+        : contextualSignal
+          ? `It leans further into your ${cleanSignal(contextualSignal).toLowerCase()} priority.`
+          : 'It offers a stronger finish and feel than the core shortlist.'
+
+      return `${roomSentence} ${upgradeSentence}`
+    }
+
+    const fitSentence = contextualSignal
+      ? `It supports your ${cleanSignal(contextualSignal).toLowerCase()} priority without overcomplicating the room.`
+      : item.inStock
+        ? 'It is a practical pick if you want something ready to move on quickly.'
+        : 'It balances day-to-day function with a calmer visual fit.'
+
+    return `${roomSentence} ${fitSentence}`
+  }, [cleanSignal, contextualSignal, form.roomType, spatialSignal])
+
+  const truncatePill = useCallback((value: string) => {
+    return value.length > 18 ? `${value.slice(0, 17).trimEnd()}…` : value
+  }, [])
+
+  const buildPills = useCallback((item: RecommendedItem) => {
+    const baseMaterial = item.material
+      .replace(/\s*\([^)]*\)/g, '')
+      .replace(/fabric/gi, '')
+      .replace(/wood/gi, 'Wood')
+      .replace(/metal/gi, 'Metal')
+      .replace(/\s+/g, ' ')
+      .trim()
+    const materialLabel = baseMaterial ? `✓ ${baseMaterial}` : '✓ Material'
+
+    return [
+      truncatePill(materialLabel),
+      truncatePill(`${item.warrantyYears}yr warranty`),
+      truncatePill(`${item.durabilityScore}/10 durability`),
+    ].slice(0, 3)
+  }, [truncatePill])
 
   const handleCompareRemove = useCallback((id: string) => {
     onCompareToggle(id)
@@ -98,16 +159,14 @@ export function ResultsDisplay({
     const isCompared = compareItems.includes(item.id)
     const isWishlisted = wishlistItems.includes(item.id)
     const priceDelta = item.price - form.budget
+    const whyCopy = buildWhyCopy(item, variant)
+    const attributePills = buildPills(item)
 
     if (variant === 'stretch') {
       return (
         <article key={item.id} className={`result-card stretch-card stretch-card-compact ${isCompared ? 'in-compare' : ''} ${isWishlisted ? 'in-wishlist' : ''}`}>
-          <div className="rank-badge">↗ Stretch Pick</div>
+          <div className="rank-badge stretch-badge">↑ Stretch Pick</div>
           <div className="card-actions">
-            <div className="card-actions-price">
-              <div className="card-price">{fmt(item.price)}</div>
-              <div className="card-delivery">+{fmt(priceDelta)} over budget</div>
-            </div>
             <button
               type="button"
               className={`compare-check ${isCompared ? 'checked' : ''}`}
@@ -125,24 +184,27 @@ export function ResultsDisplay({
               {isWishlisted ? '❤️' : '🤍'}
             </button>
           </div>
-          <div className="card-img stretch-card-media">🛋️</div>
+          <div className="card-img stretch-card-media" aria-hidden="true" />
           <div className="card-body stretch-card-body">
-            <div className="stretch-card-topline">
-              <div>
-                <div className="card-brand">{item.brand}</div>
-                <div className="card-name">{item.name}</div>
+            <div className="card-brand">{item.brand}</div>
+            <div className="card-name">{item.name}</div>
+            <div className="card-rating">★ {item.rating} · <span>{item.reviewCount} reviews</span></div>
+            <div className="stretch-price-row">
+              <div className="stretch-price-stack">
+                <div className="card-price">{fmt(item.price)}</div>
+                <div className="card-location-line">{form.city} · {item.inStock ? 'In stock' : 'Ships soon'}</div>
               </div>
+              <div className="stretch-overage">+{fmt(priceDelta)} over your budget</div>
             </div>
-            {item.stretchJustification && (
-              <div className="stretch-callout compact">
-                <div className="stretch-callout-label">Worth the extra because</div>
-                <div>{item.stretchJustification}</div>
-              </div>
-            )}
+            <div className="card-divider" />
+            <div className="card-why stretch-callout compact">
+              <div className="why-label stretch-callout-label">Why it's worth it</div>
+              {whyCopy}
+            </div>
             <div className="stretch-card-meta">
-              <span className="stretch-mini-tag">{item.material}</span>
-              <span className="stretch-mini-tag">{item.warrantyYears} yr warranty</span>
-              <span className="stretch-mini-tag">{item.durabilityScore}/10 durability</span>
+              {attributePills.map(pill => (
+                <span key={`${item.id}-${pill}`} className="stretch-mini-tag">{pill}</span>
+              ))}
             </div>
             <div className="card-footer compact">
               <div className="card-delivery">Delivery in 5-7 days · {form.city}</div>
@@ -155,14 +217,10 @@ export function ResultsDisplay({
 
     return (
       <article key={item.id} className={`result-card ${index === 0 ? 'rank-1' : ''} ${isCompared ? 'in-compare' : ''} ${isWishlisted ? 'in-wishlist' : ''}`}>
-        <div className="rank-badge">
+        <div className={`rank-badge ${index === 0 ? 'rank-badge--hero' : 'rank-badge--outlined'}`}>
           {index === 0 ? '✦ Best Match' : `✦ #${index + 1}`}
         </div>
         <div className="card-actions">
-          <div className="card-actions-price">
-            <div className="card-price">{fmt(item.price)}</div>
-            <div className="card-delivery">{form.city}</div>
-          </div>
           <button
             type="button"
             className={`compare-check ${isCompared ? 'checked' : ''}`}
@@ -180,19 +238,24 @@ export function ResultsDisplay({
             {isWishlisted ? '❤️' : '🤍'}
           </button>
         </div>
-        <div className="card-img">🛋️</div>
+        <div className="card-img" aria-hidden="true" />
         <div className="card-body">
           <div className="card-brand">{item.brand}</div>
           <div className="card-name">{item.name}</div>
-          <div className="card-rating">★ {item.rating} <span>({item.reviewCount} reviews)</span></div>
+          <div className="card-rating">★ {item.rating} · <span>{item.reviewCount} reviews</span></div>
+          <div className="card-price-block">
+            <div className="card-price">{fmt(item.price)}</div>
+            <div className="card-location-line">{form.city} · {item.inStock ? 'In stock' : 'Ships soon'}</div>
+          </div>
+          <div className="card-divider" />
           <div className="card-why">
             <div className="why-label">Why it fits you</div>
-            {item.whyItFits}
+            {whyCopy}
           </div>
           <div className="card-chip-row">
-            <span className="card-chip">✓ {item.material}</span>
-            <span className="card-chip">{item.warrantyYears} yr warranty</span>
-            <span className="card-chip">{item.durabilityScore}/10 durability</span>
+            {attributePills.map(pill => (
+              <span key={`${item.id}-${pill}`} className="card-chip">{pill}</span>
+            ))}
           </div>
           <div className="card-footer">
             <div className="card-delivery">Delivery in 5-7 days</div>
@@ -263,29 +326,19 @@ export function ResultsDisplay({
 
         <main className="results-main">
           <div className="results-header-shell">
-            <div className="results-hero-panel">
-              <div className="results-hero-copy">
-                <div className="results-kicker">Curated by FurnishAI</div>
-                <div className="results-title">The shortlist your room can hold</div>
-                <div className="results-count">{results.length} results ranked for your room, budget, and taste signals.</div>
-                <div className="results-summary">{meta.summary}</div>
-                <div className="results-signal-row">
-                  {storySignals.map(signal => (
-                    <span key={signal} className="results-signal-pill">{signal}</span>
-                  ))}
+            <div className="results-context-bar">
+              <div className="results-context-copy">
+                <div className="results-context-line">
+                  {results.length} matches · {form.roomType} · {form.city} · {hasStretchResults
+                    ? `${fmt(form.budget)} budget + stretch to ${fmt(form.budgetMax)}`
+                    : `under ${fmt(form.budget)}`}
                 </div>
+                <div className="results-context-note">{leadingInsight ?? meta.summary}</div>
               </div>
-              <div className="results-hero-aside">
-                <div className="results-stat-card highlight">
-                  <span className="results-stat-label">Lead shortlist</span>
-                  <strong>{visiblePrimaryResults.length}</strong>
-                  <span>Focused first picks before any stretch or compromise.</span>
-                </div>
-                <div className="results-stat-card">
-                  <span className="results-stat-label">Saved contenders</span>
-                  <strong>{wishlistCount}</strong>
-                  <span>Keep promising pieces in play while you compare.</span>
-                </div>
+              <div className="results-signal-row">
+                {storySignals.map(signal => (
+                  <span key={signal} className="results-signal-pill">{signal}</span>
+                ))}
               </div>
             </div>
 
@@ -348,7 +401,7 @@ export function ResultsDisplay({
                   <div className="stretch-section-title">Optional upgrades if you can stretch a little</div>
                 </div>
                 <div className="stretch-section-copy">
-                  Higher-ranked for a specific quality or fit reason, but still kept secondary to your main shortlist.
+                  Higher-ranked for fit or quality, outside your stated budget.
                 </div>
               </div>
               <div className="stretch-grid compact">

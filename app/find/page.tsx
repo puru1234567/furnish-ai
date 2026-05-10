@@ -148,6 +148,26 @@ export default function FindPage() {
 
   // Form helpers
   const set = <K extends keyof FormData>(k: K, v: FormData[K]) => setForm(p => ({ ...p, [k]: v }))
+  const deriveBudgetMax = useCallback((budget: number, budgetFlexibility: string) => {
+    switch (budgetFlexibility) {
+      case '🚫 Hard stop':
+      case '🎯 Best under budget':
+        return budget
+      case '💛 Show me if it\'s worth it':
+        return Math.max(budget, Math.round(budget * 1.2))
+      case '💚 I\'m flexible':
+        return Math.max(budget, Math.round(budget * 1.5))
+      default:
+        return budget
+    }
+  }, [])
+  const setBudgetFlexibility = useCallback((budgetFlexibility: string) => {
+    setForm(p => ({
+      ...p,
+      budgetFlexibility,
+      budgetMax: deriveBudgetMax(p.budget, budgetFlexibility),
+    }))
+  }, [deriveBudgetMax])
   const toggleArray = (key: 'materialsToAvoid' | 'trustedBrands' | 'painPoint' | 'mustHaveFeatures' | 'pastIssues' | 'universalMaterials', val: string | PainPointType) => {
     setForm(p => {
       const arr = p[key]
@@ -373,7 +393,7 @@ export default function FindPage() {
           onConfirm={({ furnitureType, budget, requestText }) => {
             set('furnitureType', furnitureType)
             set('budget', budget)
-            set('budgetMax', Math.max(budget, Math.round(budget * 1.5)))
+            set('budgetMax', deriveBudgetMax(budget, form.budgetFlexibility))
             const selected = FURNITURE_TYPES.find(item => item.id === furnitureType)
             showMicroResponse(
               'Request understood',
@@ -491,7 +511,7 @@ export default function FindPage() {
                       <button
                         key={idx}
                         className={`budget-option ${form.budgetFlexibility === opt.label ? 'selected' : ''}`}
-                        onClick={() => set('budgetFlexibility', opt.label)}
+                        onClick={() => setBudgetFlexibility(opt.label)}
                       >
                         <div className="bo-title">{opt.label}</div>
                         <div className="bo-sub">{opt.desc}</div>

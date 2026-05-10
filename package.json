@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:seed": "ts-node lib/db/seed.ts",
+    "db:schema": "echo 'Run schema.sql in Supabase SQL Editor. See lib/db/README.md'",
+    "db:setup": "npm run db:schema && npm run db:seed"
   },
   "dependencies": {
     "next": "16.2.2",
@@ -22,6 +25,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
     "tailwindcss": "^4",
+    "ts-node": "^10.9.2",
     "typescript": "^5"
   }
 }

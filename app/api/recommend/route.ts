@@ -1,23 +1,44 @@
 ﻿import { NextRequest, NextResponse } from 'next/server'
 import { UserContext, RecommendedItem } from '@/lib/types'
 import { callGroqChat } from '@/lib/ai/groq-client'
-import { filterAndRankItems, toSlimItem } from '@/lib/ai/item-filter'
-import { buildRecommendationsPrompt } from '@/lib/ai/prompts/recommendations-prompt'
+import { filterAndRankItems } from '@/lib/ai/item-filter'
+import { rankingPipeline } from '@/lib/ai/ranking'
 import { getFurnitureRepository } from '@/lib/repositories'
+import { ApiLogger } from '@/lib/ai/logger'
 
-// Slim route orchestrating recommendation flow
-
+/**
+ * Recommendation endpoint
+ * 
+ * Pipeline:
+ * 1. Hard filtering: category, budget, city, delivery, stock, pain points
+ * 2. Deterministic scoring: pain fit, room fit, style, price, social proof
+ * 3. Tier assignment: primary (≥50 & ≤budget), stretch (≥64 & >budget), discard
+ * 4. Optional LLM reranking: soft judgment on top 12 candidates for final explanation
+ * 
+ * Feature flags:
+ * - ENABLE_LLM_RERANK: Set to 'false' to skip LLM and return deterministic scores only
+ */
 export async function POST(req: NextRequest) {
+  const logger = new ApiLogger('POST /api/recommend')
+  
   try {
     const ctx: UserContext = await req.json()
+    logger.info('start', 'Recommendation request received', {
+      furnitureType: ctx.furnitureType,
+      budget: ctx.budget,
+      city: ctx.city,
+    })
 
-    // Get inventory from repository (later can be Supabase)
+    // ─ Step 1: Hard filtering ─────────────────────────────────────────────
     const repository = getFurnitureRepository()
     const allItems = await repository.findAll()
+    logger.debug('repository', `Loaded ${allItems.length} items from repository`)
 
     const { items: eligible, relaxedFlags, painContext } = filterAndRankItems(allItems, ctx)
+    logger.debug('filtering', `After hard filters: ${eligible.length} eligible items`, { relaxedFlags })
 
     if (eligible.length === 0) {
+      logger.warn('filtering', 'No eligible items after filtering')
       return NextResponse.json({
         summary: `No items found for your criteria.`,
         archetypeLabel: '',
@@ -28,48 +49,131 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    const prompt = buildRecommendationsPrompt(ctx, eligible.map(toSlimItem), relaxedFlags, painContext)
-    const raw = await callGroqChat({
-      model: 'llama-3.3-70b-versatile',
-      messages: [
-        { role: 'system', content: 'Furniture recommendation AI. Output only valid JSON.' },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.1,
-      maxTokens: 1500,
-      jsonMode: true,
+    // ─ Step 2: Deterministic scoring ──────────────────────────────────────
+    const budget = ctx.budget
+    const budgetMax = ctx.budgetMax ?? Math.round(budget * 1.4)
+    const stretchCap = Math.min(budgetMax, Math.round(budget * 1.15))
+
+    const rankingResult = rankingPipeline.rank(
+      eligible,
+      ctx,
+      painContext,
+      budget,
+      budgetMax,
+      stretchCap
+    )
+    logger.debug('ranking', 'Deterministic ranking complete', {
+      primary: rankingResult.primary.length,
+      stretch: rankingResult.stretch.length,
+      totalEvaluated: rankingResult.totalEvaluated,
     })
 
-    const aiResult = JSON.parse(raw) as {
-      summary?: string
-      archetypeLabel?: string
-      contextInsights?: string[]
-      items?: Array<{ id: string; score?: number; tier?: string; whyItFits?: string; stretchJustification?: string | null }>
-      flaggedIssues?: string[]
+    // ─ Step 3: Optional LLM reranking (feature flag) ───────────────────────
+    const enableLLMRerank = process.env.ENABLE_LLM_RERANK !== 'false'
+    const topCandidates = rankingPipeline.getTopCandidatesForLLMReranking(rankingResult, 12)
+    
+    let finalOrder = [...rankingResult.primary, ...rankingResult.stretch]
+    let archetypeLabel = ''
+    let contextInsights: string[] = []
+
+    if (enableLLMRerank && topCandidates.length > 0) {
+      logger.info('llm', `Sending ${topCandidates.length} top candidates to LLM for soft reranking`)
+      
+      try {
+        const rerankerPrompt = rankingPipeline.buildLLMRerankerPrompt(topCandidates, ctx)
+        const raw = await callGroqChat({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            { role: 'system', content: 'Return only valid JSON. Reorder by best fit.' },
+            { role: 'user', content: rerankerPrompt },
+          ],
+          temperature: 0.1,
+          maxTokens: 512,
+          jsonMode: true,
+        })
+
+        const rerankerResult = JSON.parse(raw) as {
+          reranked?: Array<{ id: string; reason?: string }>
+        }
+
+        // Rebuild order from LLM
+        if (rerankerResult.reranked && rerankerResult.reranked.length > 0) {
+          const llmOrderMap = new Map(
+            rerankerResult.reranked.map((item, idx) => [item.id, { idx, reason: item.reason }])
+          )
+
+          // Collect insight from LLM reasoning if available
+          const reasons = rerankerResult.reranked.slice(0, 2).map(r => r.reason).filter(Boolean)
+          contextInsights = reasons as string[]
+
+          // Keep top candidate but allow LLM to suggest different order
+          finalOrder.sort((a, b) => {
+            const aOrder = llmOrderMap.get(a.itemId)?.idx ?? 999
+            const bOrder = llmOrderMap.get(b.itemId)?.idx ?? 999
+            return aOrder - bOrder
+          })
+
+          logger.debug('llm', 'LLM reranking complete', { insights: contextInsights.length })
+        }
+
+        // Determine archetype from top candidate
+        if (finalOrder.length > 0) {
+          const topItem = finalOrder[0]
+          archetypeLabel = `${topItem.itemName.split(' ')[0]} recommendation`
+        }
+      } catch (error) {
+        logger.warn('llm', `LLM reranking failed, using deterministic order: ${error}`)
+        // Fall back to deterministic order
+      }
+    } else {
+      logger.info('llm', 'LLM reranking disabled or no candidates')
+      // Determine archetype from top candidate
+      if (finalOrder.length > 0) {
+        const topItem = finalOrder[0]
+        archetypeLabel = `${topItem.itemName.split(' ')[0]} recommendation`
+      }
     }
 
+    // ─ Step 4: Hydrate full items and prepare response ────────────────────
     const itemMap = new Map(allItems.map(i => [i.id, i]))
-    const recommended = (aiResult.items ?? [])
-      .map(ai => {
-        const full = itemMap.get(ai.id)
-        if (!full) return null
-        return { ...full, score: ai.score ?? 0, tier: ai.tier ?? 'primary', whyItFits: ai.whyItFits ?? '', stretchJustification: ai.stretchJustification ?? null }
+    const recommended: RecommendedItem[] = finalOrder
+      .map(score => {
+        const fullItem = itemMap.get(score.itemId)
+        if (!fullItem) return null
+
+        return {
+          ...fullItem,
+          score: score.totalScore,
+          tier: score.tier,
+          whyItFits: score.scoringBreakdown, // Include deterministic breakdown
+          stretchJustification:
+            score.tier === 'stretch'
+              ? `₹${(fullItem.price - budget).toLocaleString('en-IN')} over your ₹${budget.toLocaleString('en-IN')} budget`
+              : null,
+        }
       })
       .filter(Boolean) as RecommendedItem[]
 
+    logger.success('complete', 'Recommendation complete', {
+      items: recommended.length,
+      primary: recommended.filter(r => r.tier === 'primary').length,
+      stretch: recommended.filter(r => r.tier === 'stretch').length,
+    })
+
     return NextResponse.json({
-      summary: aiResult.summary ?? '',
-      archetypeLabel: aiResult.archetypeLabel ?? '',
-      contextInsights: aiResult.contextInsights ?? [],
+      summary: `Found ${recommended.length} ${ctx.furnitureType || 'furniture'} items in ${ctx.city} ranked by fit.`,
+      archetypeLabel,
+      contextInsights,
       visionSummary: null,
       items: recommended,
-      flaggedIssues: [...(aiResult.flaggedIssues ?? []), ...relaxedFlags],
+      flaggedIssues: relaxedFlags,
     })
   } catch (error: unknown) {
-    console.error('[recommend] Error:', error)
+    const message = error instanceof Error ? error.message : 'Recommendation failed'
+    logger.error('error', message, error as Error)
     return NextResponse.json({
-      error: error instanceof Error ? error.message : 'Recommendation failed.',
-      details: error instanceof Error ? error.stack ?? null : null,
+      error: message,
+      details: process.env.NODE_ENV === 'development' && error instanceof Error ? error.stack : null,
     }, { status: 500 })
   }
 }
