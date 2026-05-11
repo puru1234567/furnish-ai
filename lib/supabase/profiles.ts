@@ -1,5 +1,5 @@
 import type { SupabaseClient, User } from '@supabase/supabase-js'
-import type { AppRole } from '@/lib/supabase/roles'
+import { getUserRole, type AppRole } from '@/lib/supabase/roles'
 
 export interface AppProfile {
   id: string
@@ -22,9 +22,9 @@ export async function fetchOwnProfile(
   return data as AppProfile
 }
 
-export async function updateOwnProfileName(
+export async function upsertOwnProfileName(
   supabase: SupabaseClient,
-  userId: string,
+  user: User,
   fullName: string
 ): Promise<void> {
   const trimmedName = fullName.trim()
@@ -32,13 +32,33 @@ export async function updateOwnProfileName(
 
   await supabase
     .from('profiles')
-    .update({ full_name: trimmedName })
-    .eq('id', userId)
+    .upsert(
+      {
+        id: user.id,
+        email: user.email ?? '',
+        role: getUserRole(user),
+        full_name: trimmedName,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    )
+}
+
+function normalizeDisplayName(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+
+  const trimmedValue = value.trim()
+  return trimmedValue || null
 }
 
 export function getDisplayName(user: User | null, profile: AppProfile | null): string {
-  const fullName = profile?.full_name?.trim()
-  if (fullName) return fullName
+  const profileName = normalizeDisplayName(profile?.full_name)
+  if (profileName) return profileName
+
+  const metadataName = normalizeDisplayName(user?.user_metadata?.full_name)
+    ?? normalizeDisplayName(user?.user_metadata?.name)
+    ?? normalizeDisplayName(user?.user_metadata?.display_name)
+  if (metadataName) return metadataName
 
   const email = profile?.email ?? user?.email ?? ''
   if (!email) return 'Member'

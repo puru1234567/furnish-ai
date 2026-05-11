@@ -24,11 +24,15 @@ let repositoryInstance: IFurnitureRepository | null = null
 function createRepositoryInstance(): IFurnitureRepository {
   const useSupabase = process.env.USE_SUPABASE_DB === 'true'
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY
+  // Server-side routes use service role key (bypasses RLS); anon key is a fallback
+  const supabaseKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+    process.env.SUPABASE_ANON_KEY
 
-  if (useSupabase && supabaseUrl && supabaseAnonKey) {
+  if (useSupabase && supabaseUrl && supabaseKey) {
     console.log('[repositoryFactory] Using SupabaseFurnitureRepository')
-    return new SupabaseFurnitureRepository(supabaseUrl, supabaseAnonKey)
+    return new SupabaseFurnitureRepository(supabaseUrl, supabaseKey)
   }
 
   console.log('[repositoryFactory] Using InMemoryFurnitureRepository')

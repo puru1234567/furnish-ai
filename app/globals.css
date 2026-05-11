@@ -1153,6 +1153,36 @@ body {
   transform: translateY(-1px);
 }
 
+.site-header-user-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: .06em;
+  color: #f4efe4;
+  transition: color .3s ease;
+}
+
+.site-header-user-icon {
+  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.site-header-user-name {
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-header-auth-rail--scrolled .site-header-user-label {
+  color: #1c1917;
+}
+
 .site-header-auth-link--button {
   cursor: pointer;
 }
@@ -1166,6 +1196,30 @@ body {
 .site-header-auth-link--primary:hover {
   background: #ffffff;
   border-color: rgba(255,255,255,.54);
+}
+
+.site-header-user-profile-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.site-header-user-icon {
+  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.site-header-user-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-header-auth-rail--scrolled .site-header-user-name {
+  max-width: 100px;
 }
 
 .site-header-auth-rail--scrolled .site-header-role-pill {

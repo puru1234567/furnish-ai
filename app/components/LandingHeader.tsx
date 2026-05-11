@@ -109,13 +109,10 @@ export function LandingHeader({
       <div className={`site-header-auth-rail${scrolled ? ' site-header-auth-rail--scrolled' : ''}`}>
         {user ? (
           <>
-            <div className="site-header-user-pill">
-              <span className="site-header-user-email">{displayName}</span>
-              <span className="site-header-role-pill">{getRoleLabel(role)}</span>
-            </div>
-            <Link href="/account" className="site-header-auth-link">
-              Account
-            </Link>
+            <span className="site-header-user-label">
+              <span className="site-header-user-icon">👤</span>
+              <span className="site-header-user-name">{displayName}</span>
+            </span>
             <form action="/auth/signout" method="post">
               <button type="submit" className="site-header-auth-link site-header-auth-link--button">
                 Log out

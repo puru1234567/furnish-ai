@@ -186,11 +186,11 @@ export function filterAndRankItems(availableItems: FurnitureItem[], ctx: UserCon
     (!ctx.deliveryOk || item.deliveryAvailable) &&
     (ctx.urgency !== 'this_week' || item.inStock)
 
-  const budgetCeiling = ctx.budgetMax ?? ctx.budget * 1.5
-  const budgetFloor   = ctx.budget * 0.65
+  // No lower floor — cheaper items are a value bonus, not a disqualification.
+  const budgetCeiling = ctx.budgetMax ?? ctx.budget
 
   let pool = availableItems.filter(
-    item => hardMatch(item) && item.price >= budgetFloor && item.price <= budgetCeiling
+    item => hardMatch(item) && item.price <= budgetCeiling
   )
 
   // Relax city constraint if nothing found
@@ -198,7 +198,7 @@ export function filterAndRankItems(availableItems: FurnitureItem[], ctx: UserCon
     pool = availableItems.filter(item =>
       (!allowedCategories || allowedCategories.includes(item.category)) &&
       item.cities.includes('All India') &&
-      item.price >= budgetFloor && item.price <= budgetCeiling
+      item.price <= budgetCeiling
     )
     relaxedFlags.push(`No items found in ${ctx.city} — showing All India delivery options`)
   }

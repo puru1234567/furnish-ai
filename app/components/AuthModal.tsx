@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { updateOwnProfileName } from '@/lib/supabase/profiles'
+import { upsertOwnProfileName } from '@/lib/supabase/profiles'
 
 type AuthMode = 'login' | 'signup'
 
@@ -96,6 +96,9 @@ export function AuthModal({
       email,
       password,
       options: {
+        data: {
+          full_name: fullName.trim(),
+        },
         emailRedirectTo: `${window.location.origin}/auth/callback`,
       },
     })
@@ -109,8 +112,8 @@ export function AuthModal({
     const hasSession = Boolean(data.session)
 
     if (hasSession) {
-      if (data.user?.id && fullName.trim()) {
-        await updateOwnProfileName(supabase, data.user.id, fullName)
+      if (data.user && fullName.trim()) {
+        await upsertOwnProfileName(supabase, data.user, fullName)
       }
       setLoading(false)
       onSignedIn('signup')
@@ -122,8 +125,8 @@ export function AuthModal({
       password,
     })
 
-    if (!autoLoginError && loginData.user?.id && fullName.trim()) {
-      await updateOwnProfileName(supabase, loginData.user.id, fullName)
+    if (!autoLoginError && loginData.user && fullName.trim()) {
+      await upsertOwnProfileName(supabase, loginData.user, fullName)
     }
 
     setLoading(false)

@@ -33,29 +33,28 @@ export async function POST(req: NextRequest) {
     const repository = getFurnitureRepository()
     const allItems = await repository.findAll()
     const allowedCategories = FURNITURE_CATEGORY_MAP[body.furnitureType] ?? [body.furnitureType]
-    const budgetMax = body.budgetMax ?? body.budget
-    const budgetFloor = Math.round(body.budget * 0.65)
+    // Use budgetMax when explicitly provided; otherwise use budget as ceiling.
+    // No lower floor — cheaper items are a value bonus, not a disqualification.
+    const budgetCeiling = body.budgetMax ?? body.budget
 
     const cityMatches = allItems.filter(item =>
       allowedCategories.includes(item.category) &&
       (item.cities.includes(body.city) || item.cities.includes('All India')) &&
-      item.price >= budgetFloor &&
-      item.price <= budgetMax
+      item.price <= budgetCeiling
     )
 
     const fallbackMatches = cityMatches.length === 0
       ? allItems.filter(item =>
           allowedCategories.includes(item.category) &&
           item.cities.includes('All India') &&
-          item.price >= budgetFloor &&
-          item.price <= budgetMax
+          item.price <= budgetCeiling
         )
       : cityMatches
 
     return NextResponse.json({
       totalMatches: fallbackMatches.length,
       underBudgetCount: fallbackMatches.filter(item => item.price <= body.budget).length,
-      stretchCount: fallbackMatches.filter(item => item.price > body.budget && item.price <= budgetMax).length,
+      stretchCount: fallbackMatches.filter(item => item.price > body.budget && item.price <= budgetCeiling).length,
       usedAllIndiaFallback: cityMatches.length === 0 && fallbackMatches.length > 0,
     })
   } catch (error) {
