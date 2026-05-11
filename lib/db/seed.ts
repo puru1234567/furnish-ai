@@ -2,6 +2,13 @@
 // Seed script to load furniture-data.ts into Supabase
 // Run with: npm run db:seed
 
+import { config } from 'dotenv'
+import { fileURLToPath } from 'url'
+import path from 'path'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+config({ path: path.resolve(__dirname, '../../.env.local') })
+
 import { furnitureData } from '@/lib/furniture-data'
 
 /**

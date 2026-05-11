@@ -54,6 +54,14 @@ export default function FindPage() {
   // Form state
   const router = useRouter()
   const [form, setForm] = useState<FormData>(DEFAULTS)
+  const [inventoryPreview, setInventoryPreview] = useState<{
+    totalMatches: number
+    underBudgetCount: number
+    stretchCount: number
+    usedAllIndiaFallback: boolean
+  } | null>(null)
+  const [inventoryPreviewLoading, setInventoryPreviewLoading] = useState(false)
+  const [totalItemsCount, setTotalItemsCount] = useState<number>(247)
   const sectionRefs = useRef<Record<'room' | 'questions' | 'budget' | 'refine' | 'results', HTMLDivElement | null>>({
     room: null,
     questions: null,
@@ -168,6 +176,34 @@ export default function FindPage() {
       budgetMax: deriveBudgetMax(p.budget, budgetFlexibility),
     }))
   }, [deriveBudgetMax])
+  const loadInventoryPreview = useCallback(async (furnitureType: string, budget: number, budgetMax: number, city: string) => {
+    setInventoryPreviewLoading(true)
+
+    try {
+      const response = await fetch('/api/inventory-preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ furnitureType, budget, budgetMax, city }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to preview inventory')
+      }
+
+      const data = await response.json() as {
+        totalMatches: number
+        underBudgetCount: number
+        stretchCount: number
+        usedAllIndiaFallback: boolean
+      }
+
+      setInventoryPreview(data)
+    } catch {
+      setInventoryPreview(null)
+    } finally {
+      setInventoryPreviewLoading(false)
+    }
+  }, [])
   const toggleArray = (key: 'materialsToAvoid' | 'trustedBrands' | 'painPoint' | 'mustHaveFeatures' | 'pastIssues' | 'universalMaterials', val: string | PainPointType) => {
     setForm(p => {
       const arr = p[key]
@@ -248,8 +284,13 @@ export default function FindPage() {
 
   // Submit and get recommendations
   const submit = useCallback(async () => {
+    // Prevent double submissions
+    if (loading) {
+      console.warn('[submit] Already loading, ignoring duplicate submission')
+      return
+    }
+
     if (!form.furnitureType) {
-      setStep(0)
       showMicroResponse('Furniture type missing', 'Tell us which furniture item you want before continuing.', 'error')
       return
     }
@@ -316,6 +357,7 @@ export default function FindPage() {
   const reset = useCallback(() => {
     setStep(0)
     setForm(DEFAULTS)
+    setInventoryPreview(null)
     setRoomPhotos({ front: null, left: null, right: null, back: null })
     setPhotoPreviews({ front: null, left: null, right: null, back: null })
     resetAnalysis()
@@ -325,22 +367,51 @@ export default function FindPage() {
   }, [setStep, setRoomPhotos, setPhotoPreviews, resetAnalysis, resetRecommendations, setQuestionSubIndex])
 
   // Derived display values
+  const previewTotalMatches = inventoryPreview?.totalMatches ?? (INVENTORY_COUNTS[form.furnitureType] ?? 247)
+  const previewLocation = inventoryPreview?.usedAllIndiaFallback ? 'All India' : form.city
   const livePillText = form.furnitureType
-    ? `✦ ${INVENTORY_COUNTS[form.furnitureType] ?? 247} ${form.furnitureType}s in ${form.city}`
-    : '✦ 247 items available'
+    ? `✦ ${inventoryPreviewLoading ? 'Checking...' : previewTotalMatches} ${form.furnitureType}s in ${previewLocation}`
+    : `✦ ${totalItemsCount} items available`
   const echoLine = form.furnitureType
-    ? `${INVENTORY_COUNTS[form.furnitureType] ?? '—'} ${getFurnitureLabel(form.furnitureType)} options · ${form.city}`
+    ? `${inventoryPreviewLoading ? 'Checking...' : previewTotalMatches} ${getFurnitureLabel(form.furnitureType)} options · ${previewLocation}`
     : ''
   const selectedContextualCount = Object.keys(form.contextualAnswers).length
   const currentQuestion = contextualQuestions[questionSubIndex]
   const currentQuestionAnswer = currentQuestion ? form.contextualAnswers[currentQuestion.id] : undefined
-  const budgetFitEstimate = Math.max(6, Math.round((INVENTORY_COUNTS[form.furnitureType] ?? 247) * Math.min(1, form.budget / 90000)))
+  const budgetFitEstimate = inventoryPreview?.underBudgetCount
+    ?? Math.max(6, Math.round((INVENTORY_COUNTS[form.furnitureType] ?? 247) * Math.min(1, form.budget / 90000)))
   const loadingStages = [
     `Checking ${form.city} inventory for ${getFurnitureLabel(form.furnitureType || 'sofa')}`,
     'Scoring for room constraints, delivery, and budget fit',
     'Writing short why-it-fits explanations for the best options',
     'Packaging primary and stretch picks for review',
   ]
+
+  useEffect(() => {
+    if (!form.furnitureType || !form.budget || form.budget < 1000) {
+      setInventoryPreview(null)
+      setInventoryPreviewLoading(false)
+      return
+    }
+
+    void loadInventoryPreview(form.furnitureType, form.budget, form.budgetMax, form.city)
+  }, [form.furnitureType, form.budget, form.budgetMax, form.city, loadInventoryPreview])
+
+  useEffect(() => {
+    const fetchTotalItems = async () => {
+      try {
+        const response = await fetch('/api/inventory-total')
+        if (response.ok) {
+          const data = await response.json() as { total: number }
+          setTotalItemsCount(data.total)
+        }
+      } catch {
+        setTotalItemsCount(247)
+      }
+    }
+
+    void fetchTotalItems()
+  }, [])
 
   useEffect(() => {
     if (step === 0 || step === 99 || step === 101) return

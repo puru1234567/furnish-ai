@@ -48,10 +48,7 @@ CREATE TABLE IF NOT EXISTS products (
   
   -- Metadata
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  
-  -- Indexes for common queries
-  CONSTRAINT products_pk PRIMARY KEY (id)
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 -- Indexes for filtering and search
