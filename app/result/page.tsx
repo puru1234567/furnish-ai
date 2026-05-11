@@ -1,24 +1,29 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
 import type { RecommendedItem, RecommendationResponse, RoomAnalysis } from '@/lib/types'
 import type { SortOption } from '@/lib/utils/sort-items'
 import type { FormData } from '../find/find-page-model'
+import { readStoredResults, type StoredResults } from '@/lib/utils/saved-results'
 import { ResultsDisplay } from '../find/components/ResultsDisplay'
 import { DEFAULTS } from '../find/find-page-constants'
 import { fmt, getFurnitureLabel } from '../find/find-page-utils'
 
-interface StoredResults {
-  results: RecommendedItem[]
-  meta: Pick<RecommendationResponse, 'summary' | 'archetypeLabel' | 'contextInsights' | 'flaggedIssues'>
-  form: FormData
-  roomAnalysis: RoomAnalysis | null
-}
-
 export default function ResultPage() {
+  const router = useRouter()
   const [data, setData] = useState<StoredResults | null>(null)
   const [hydrated, setHydrated] = useState(false)
+
+  // Auth guard
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) router.replace('/?auth=login&next=/result')
+    })
+  }, [router])
 
   // Local UI state — owned by this page, not the find flow
   const [priceFilter, setPriceFilter] = useState(100000)
@@ -28,9 +33,8 @@ export default function ResultPage() {
 
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem('furnish_ai_results')
-      if (raw) {
-        const parsed = JSON.parse(raw) as StoredResults
+      const parsed = readStoredResults()
+      if (parsed) {
         setData(parsed)
         // Seed price filter from the budget stored in form
         setPriceFilter(Math.round((parsed.form?.budgetMax ?? parsed.form?.budget ?? 100000) * 1.3))
@@ -51,7 +55,10 @@ export default function ResultPage() {
       <>
         <header className="site-header">
           <div className="logo">Furnish<span>AI</span></div>
-          <Link href="/find" className="btn-skip">← New search</Link>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <Link href="/account" className="btn-skip">Account</Link>
+            <Link href="/find" className="btn-skip">← New search</Link>
+          </div>
         </header>
         <div style={{
           minHeight: '80vh', display: 'flex', flexDirection: 'column',
@@ -89,6 +96,7 @@ export default function ResultPage() {
       <header className="site-header">
         <div className="logo">Furnish<span>AI</span></div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <Link href="/account" className="btn-skip">Account</Link>
           <Link href="/find" className="btn-skip">← New search</Link>
         </div>
       </header>

@@ -1,8 +1,25 @@
 'use client'
 
 import Link from 'next/link'
+import type { User } from '@supabase/supabase-js'
+import type { AppRole } from '@/lib/supabase/roles'
+import type { SavedResultSummary } from '@/lib/utils/saved-results'
 
-export function LandingHero() {
+interface LandingHeroProps {
+  user: User | null
+  displayName: string
+  role: AppRole
+  savedResults: SavedResultSummary | null
+  onStartRoomRead: () => void
+}
+
+export function LandingHero({
+  user,
+  displayName,
+  role,
+  savedResults,
+  onStartRoomRead,
+}: LandingHeroProps) {
   return (
     <section className="landing-hero">
       <div className="hero-orbit hero-orbit-left" />
@@ -13,9 +30,45 @@ export function LandingHero() {
         <p className="hero-sub">Upload your space, answer a few focused questions, and get furniture recommendations that feel considered, calm, and actually right for the room.</p>
 
         <div className="hero-cta">
-          <Link href="/find" className="primary">Start your room read</Link>
+          <button type="button" className="primary" onClick={onStartRoomRead}>Start your room read</button>
           <a href="#how" className="secondary">See the journey</a>
         </div>
+
+        {user ? (
+          <div className="mt-6 max-w-[620px] rounded-[28px] border border-[rgba(181,138,82,0.18)] bg-[rgba(255,253,249,0.82)] p-5 shadow-[0_18px_40px_rgba(28,25,23,0.07)]">
+            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--terracotta)]">Signed in</p>
+                <p className="mt-2 text-lg text-[var(--charcoal)]">
+                  {displayName} · {role}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-[var(--warm-grey)]">
+                  {savedResults
+                    ? `Last room read: ${savedResults.roomType} ${savedResults.furnitureType}, ${savedResults.itemCount} shortlisted items.`
+                    : 'You are logged in. Start a room read whenever you are ready.'}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                {savedResults ? (
+                  <Link href="/result" className="secondary">
+                    Resume previous results
+                  </Link>
+                ) : null}
+                <Link href="/account" className="secondary">
+                  Open account
+                </Link>
+                <Link href="/find" className="primary">
+                  Continue to room read
+                </Link>
+              </div>
+            </div>
+
+            {savedResults ? (
+              <p className="mt-4 text-sm leading-6 text-[var(--warm-grey)]">{savedResults.summary}</p>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="hero-journey-strip">
           <div className="hero-journey-step">

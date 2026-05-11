@@ -2,6 +2,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
+import { saveStoredResults } from '@/lib/utils/saved-results'
 import { FindStepQuestions } from './components/FindStepQuestions'
 import { FindStepRoomDetails } from './components/FindStepRoomDetails'
 import { FindStepPromptIntake } from './components/FindStepPromptIntake'
@@ -53,6 +55,15 @@ import {
 export default function FindPage() {
   // Form state
   const router = useRouter()
+
+  // Auth guard — middleware handles most cases; this covers client-side navigation
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) router.replace('/?auth=login&next=/find')
+    })
+  }, [router])
+
   const [form, setForm] = useState<FormData>(DEFAULTS)
   const [inventoryPreview, setInventoryPreview] = useState<{
     totalMatches: number
@@ -332,7 +343,7 @@ export default function FindPage() {
 
       const data = await getRecommendations(ctx)
       try {
-        sessionStorage.setItem('furnish_ai_results', JSON.stringify({
+        saveStoredResults({
           results: data?.items ?? [],
           meta: {
             summary: data?.summary ?? '',
@@ -342,7 +353,7 @@ export default function FindPage() {
           },
           form,
           roomAnalysis,
-        }))
+        })
       } catch {
         // ignore serialisation errors — navigate anyway
       }

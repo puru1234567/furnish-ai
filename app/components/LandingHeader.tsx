@@ -2,10 +2,67 @@
 
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
+import type { User } from '@supabase/supabase-js'
+import type { AppRole } from '@/lib/supabase/roles'
+import { getRoleLabel } from '@/lib/supabase/roles'
 
-export function LandingHeader() {
+type MenuItem = {
+  href?: string
+  action?: () => void
+  label: string
+  index: string
+  cta?: boolean
+}
+
+interface LandingHeaderProps {
+  user: User | null
+  displayName: string
+  role: AppRole
+  hasSavedResults: boolean
+  onOpenLogin: () => void
+  onOpenSignup: () => void
+  onStartMatching: () => void
+}
+
+export function LandingHeader({
+  user,
+  displayName,
+  role,
+  hasSavedResults,
+  onOpenLogin,
+  onOpenSignup,
+  onStartMatching,
+}: LandingHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
+
+  const menuItems: MenuItem[] = user
+    ? (() => {
+        const items: MenuItem[] = [
+          { href: '/find', label: 'Start matching', index: '01', cta: true },
+        ]
+
+        if (hasSavedResults) {
+          items.push({ href: '/result', label: 'Saved results', index: '02' })
+        }
+
+        items.push({ href: '/account', label: 'Account', index: hasSavedResults ? '03' : '02' })
+
+        if (role === 'vendor' || role === 'admin') {
+          items.push({ href: '/vendor', label: 'Vendor studio', index: hasSavedResults ? '04' : '03' })
+        }
+
+        if (role === 'admin') {
+          items.push({ href: '/admin', label: 'Admin console', index: hasSavedResults ? '05' : '04' })
+        }
+
+        return items
+      })()
+    : [
+        { href: '#how', label: 'The Journey', index: '01' },
+        { href: '#about', label: 'About', index: '02' },
+        { action: onStartMatching, label: 'Start matching', index: '03', cta: true },
+      ]
 
   useEffect(() => {
     const onScroll = () => {
@@ -49,6 +106,34 @@ export function LandingHeader() {
         </span>
       </button>
 
+      <div className={`site-header-auth-rail${scrolled ? ' site-header-auth-rail--scrolled' : ''}`}>
+        {user ? (
+          <>
+            <div className="site-header-user-pill">
+              <span className="site-header-user-email">{displayName}</span>
+              <span className="site-header-role-pill">{getRoleLabel(role)}</span>
+            </div>
+            <Link href="/account" className="site-header-auth-link">
+              Account
+            </Link>
+            <form action="/auth/signout" method="post">
+              <button type="submit" className="site-header-auth-link site-header-auth-link--button">
+                Log out
+              </button>
+            </form>
+          </>
+        ) : (
+          <>
+            <button type="button" className="site-header-auth-link site-header-auth-link--button" onClick={onOpenLogin}>
+              Log in
+            </button>
+            <button type="button" className="site-header-auth-link site-header-auth-link--primary" onClick={onOpenSignup}>
+              Sign up
+            </button>
+          </>
+        )}
+      </div>
+
       <header className={`site-header site-header--landing${scrolled ? ' site-header--scrolled' : ''}${menuOpen ? ' site-header--menu-open' : ''}`}>
         {/* Invisible placeholder keeps the 3-column grid intact */}
         <div className="site-header-logo-placeholder" aria-hidden="true" />
@@ -72,22 +157,37 @@ export function LandingHeader() {
         </button>
 
         <nav className="nav-overlay-links">
-          <a href="#how" className="nav-overlay-link" onClick={() => setMenuOpen(false)}>
-            <span className="nav-link-index">01</span>
-            <span className="nav-link-text">The Journey</span>
-          </a>
-          <a href="#about" className="nav-overlay-link" onClick={() => setMenuOpen(false)}>
-            <span className="nav-link-index">02</span>
-            <span className="nav-link-text">About</span>
-          </a>
-          <Link href="/find" className="nav-overlay-link nav-overlay-link--cta" onClick={() => setMenuOpen(false)}>
-            <span className="nav-link-index">03</span>
-            <span className="nav-link-text">Start matching</span>
-          </Link>
+          {menuItems.map(item =>
+            item.href?.startsWith('#') ? (
+              <a key={item.label} href={item.href} className={`nav-overlay-link${item.cta ? ' nav-overlay-link--cta' : ''}`} onClick={() => setMenuOpen(false)}>
+                <span className="nav-link-index">{item.index}</span>
+                <span className="nav-link-text">{item.label}</span>
+              </a>
+            ) : item.href ? (
+              <Link key={item.label} href={item.href} className={`nav-overlay-link${item.cta ? ' nav-overlay-link--cta' : ''}`} onClick={() => setMenuOpen(false)}>
+                <span className="nav-link-index">{item.index}</span>
+                <span className="nav-link-text">{item.label}</span>
+              </Link>
+            ) : (
+              <button
+                key={item.label}
+                type="button"
+                className={`nav-overlay-link${item.cta ? ' nav-overlay-link--cta' : ''}`}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', width: '100%', textAlign: 'left' }}
+                onClick={() => {
+                  setMenuOpen(false)
+                  item.action?.()
+                }}
+              >
+                <span className="nav-link-index">{item.index}</span>
+                <span className="nav-link-text">{item.label}</span>
+              </button>
+            )
+          )}
         </nav>
 
         <div className="nav-overlay-footer">
-          <span>Room-first furniture matching.</span>
+          <span>{user ? `${getRoleLabel(role)} navigation active.` : 'Room-first furniture matching.'}</span>
         </div>
       </div>
     </>
