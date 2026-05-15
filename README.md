@@ -1,5 +1,13 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Auth Toggle
+
+Use `NEXT_PUBLIC_AUTH_ENABLED` in `.env.local` to control whether login is required.
+
+- `NEXT_PUBLIC_AUTH_ENABLED=true`: current auth-protected behavior stays enabled.
+- `NEXT_PUBLIC_AUTH_ENABLED=false`: public mode; only `/`, `/find`, and `/result` stay reachable.
+- In public mode, `/account`, `/vendor`, `/admin`, `/login`, and `/signup` redirect to `/` and the home page does not open auth UI.
+
 ## Getting Started
 
 First, run the development server:
@@ -34,3 +42,8 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## feature i want to add 
+a room visualizer and feature to map your whole home 
+in that you can select an area to equip it with some items that might be suitable for that space or get some recommendations 
+

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
+import { isAuthEnabled } from '@/lib/config/auth-config'
 import { fetchOwnProfile, getDisplayName, type AppProfile } from '@/lib/supabase/profiles'
 import { getUserRole, type AppRole } from '@/lib/supabase/roles'
 import { readSavedResultSummary, type SavedResultSummary } from '@/lib/utils/saved-results'
@@ -16,6 +17,7 @@ type ToastState = { kind: 'login' | 'signup'; message: string } | null
 
 export default function HomePage() {
   const supabase = useMemo(() => createClient(), [])
+  const authEnabled = isAuthEnabled()
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<AppProfile | null>(null)
   const [role, setRole] = useState<AppRole>('user')
@@ -41,6 +43,14 @@ export default function HomePage() {
   }
 
   useEffect(() => {
+    if (!authEnabled) {
+      setUser(null)
+      setProfile(null)
+      setRole('user')
+      setSavedResults(readSavedResultSummary())
+      return
+    }
+
     supabase.auth.getUser().then(({ data: { user: currentUser } }) => {
       void syncUserState(currentUser)
     })
@@ -51,7 +61,7 @@ export default function HomePage() {
     })
 
     return () => subscription.unsubscribe()
-  }, [supabase])
+  }, [authEnabled, supabase])
 
   useEffect(() => {
     if (!toast) return
@@ -61,6 +71,12 @@ export default function HomePage() {
   }, [toast])
 
   useEffect(() => {
+    if (!authEnabled) {
+      clearAuthQueryParams()
+      setAuthModalOpen(false)
+      return
+    }
+
     const params = new URLSearchParams(window.location.search)
     const auth = params.get('auth')
     const next = params.get('next')
@@ -73,7 +89,7 @@ export default function HomePage() {
     if (next) {
       setNextPath(next)
     }
-  }, [])
+  }, [authEnabled])
 
   function clearAuthQueryParams() {
     const params = new URLSearchParams(window.location.search)
@@ -84,6 +100,11 @@ export default function HomePage() {
   }
 
   function openAuthModal(mode: AuthMode, requestedPath = '/find') {
+    if (!authEnabled) {
+      window.location.href = requestedPath
+      return
+    }
+
     setAuthMode(mode)
     setNextPath(requestedPath)
     setAuthModalOpen(true)
@@ -99,7 +120,7 @@ export default function HomePage() {
   }
 
   function handleStartRoomRead() {
-    if (user) {
+    if (!authEnabled || user) {
       window.location.href = '/find'
       return
     }
@@ -126,6 +147,7 @@ export default function HomePage() {
   return (
     <>
       <LandingHeader
+        authEnabled={authEnabled}
         user={user}
         displayName={displayName}
         role={role}
@@ -142,18 +164,20 @@ export default function HomePage() {
         onStartRoomRead={handleStartRoomRead}
       />
       <FeaturesStrip />
-      {toast ? (
+      {authEnabled && toast ? (
         <div className={`auth-toast auth-toast--${toast.kind}`} role="status" aria-live="polite">
           {toast.message}
         </div>
       ) : null}
-      <AuthModal
-        isOpen={authModalOpen}
-        mode={authMode}
-        onClose={closeAuthModal}
-        onModeChange={setAuthMode}
-        onSignedIn={handleSignedIn}
-      />
+      {authEnabled ? (
+        <AuthModal
+          isOpen={authModalOpen}
+          mode={authMode}
+          onClose={closeAuthModal}
+          onModeChange={setAuthMode}
+          onSignedIn={handleSignedIn}
+        />
+      ) : null}
     </>
   )
 }

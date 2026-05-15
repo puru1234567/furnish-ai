@@ -44,6 +44,8 @@ export function ResultsDisplay({
   const [sortOpen, setSortOpen] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [wishlistItems, setWishlistItems] = useState<string[]>([])
+  const [usefulnessRating, setUsefulnessRating] = useState<'yes' | 'partial' | 'no' | null>(null)
+  const [feedbackReason, setFeedbackReason] = useState<string | null>(null)
   const quickAdjustments = [
     'Too expensive - show cheaper',
     'Not modern enough',
@@ -92,21 +94,27 @@ export function ResultsDisplay({
 
     if (variant === 'stretch') {
       const upgradeSentence = item.durabilityScore >= 8
-        ? 'It earns the stretch with one of the strongest quality scores in this set.'
+        ? `Durability score of ${item.durabilityScore}/10 makes it worth the premium.`
         : contextualSignal
-          ? `It leans further into your ${cleanSignal(contextualSignal).toLowerCase()} priority.`
-          : 'It offers a stronger finish and feel than the core shortlist.'
+          ? `Leans into your ${cleanSignal(contextualSignal).toLowerCase()} preference at a higher quality level.`
+          : `Better ${item.material.toLowerCase()} construction than the core picks.`
 
-      return `${roomSentence} ${upgradeSentence}`
+      return `${roomSentence} ${upgradeSentence} Material: ${item.material.split('(')[0].trim()}. ${item.warrantyYears}-year warranty.`
     }
 
     const fitSentence = contextualSignal
-      ? `It supports your ${cleanSignal(contextualSignal).toLowerCase()} priority without overcomplicating the room.`
+      ? `Addresses your ${cleanSignal(contextualSignal).toLowerCase()} directly without adding visual clutter.`
       : item.inStock
-        ? 'It is a practical pick if you want something ready to move on quickly.'
-        : 'It balances day-to-day function with a calmer visual fit.'
+        ? `Ready to ship this week—good for quick setups.`
+        : `Balances everyday practicality with restrained aesthetics.`
 
-    return `${roomSentence} ${fitSentence}`
+    const materialLine = item.material.toLowerCase().includes('fabric')
+      ? `Fabric composition supports durability. `
+      : item.material.toLowerCase().includes('wood')
+        ? `Solid construction matches your room's needs. `
+        : `Material choice complements room flow. `
+
+    return `${roomSentence} ${fitSentence} ${materialLine}${item.durabilityScore >= 7 ? `Strong durability (${item.durabilityScore}/10).` : ''}`
   }, [cleanSignal, contextualSignal, form.roomType, spatialSignal])
 
   const truncatePill = useCallback((value: string) => {
@@ -154,6 +162,31 @@ export function ResultsDisplay({
       alert('Link copied to clipboard!')
     }
   }, [results, form])
+
+  const handleUsefulnessFeedback = useCallback((rating: 'yes' | 'partial' | 'no') => {
+    setUsefulnessRating(rating)
+    if (rating !== 'no') {
+      console.log({
+        feedback: rating === 'yes' ? 'yes' : 'partial',
+        reason: null,
+        timestamp: new Date().toISOString(),
+        category: form.furnitureType,
+        budget: form.budget,
+      })
+      setFeedbackReason(null)
+    }
+  }, [form])
+
+  const handleFeedbackReason = useCallback((reason: string) => {
+    setFeedbackReason(reason)
+    console.log({
+      feedback: 'no',
+      reason,
+      timestamp: new Date().toISOString(),
+      category: form.furnitureType,
+      budget: form.budget,
+    })
+  }, [form])
 
   const renderResultCard = (item: RecommendedItem, index: number, variant: 'primary' | 'stretch') => {
     const isCompared = compareItems.includes(item.id)
@@ -208,7 +241,23 @@ export function ResultsDisplay({
             </div>
             <div className="card-footer compact">
               <div className="card-delivery">Delivery in 5-7 days · {form.city}</div>
-              <button type="button" className="card-cta" onClick={() => window.open(item.productUrl, '_blank')}>View piece →</button>
+              <button
+                type="button"
+                className="card-cta"
+                onClick={() => {
+                  console.log({
+                    event: 'product_click',
+                    item_id: item.id,
+                    item_name: item.name,
+                    rank_position: 'stretch',
+                    price: item.price,
+                    timestamp: new Date().toISOString(),
+                  })
+                  window.open(item.productUrl, '_blank')
+                }}
+              >
+                View piece →
+              </button>
             </div>
           </div>
         </article>
@@ -259,7 +308,23 @@ export function ResultsDisplay({
           </div>
           <div className="card-footer">
             <div className="card-delivery">Delivery in 5-7 days</div>
-            <button type="button" className="card-cta" onClick={() => window.open(item.productUrl, '_blank')}>View piece →</button>
+            <button
+              type="button"
+              className="card-cta"
+              onClick={() => {
+                console.log({
+                  event: 'product_click',
+                  item_id: item.id,
+                  item_name: item.name,
+                  rank_position: index + 1,
+                  price: item.price,
+                  timestamp: new Date().toISOString(),
+                })
+                window.open(item.productUrl, '_blank')
+              }}
+            >
+              View piece →
+            </button>
           </div>
         </div>
       </article>
@@ -409,6 +474,68 @@ export function ResultsDisplay({
               </div>
             </section>
           )}
+
+          <div className="results-usefulness-panel">
+            <div className="results-usefulness-title">Was this shortlist useful for your room?</div>
+            <div className="results-usefulness-actions">
+              <button
+                type="button"
+                className={`usefulness-btn ${usefulnessRating === 'yes' ? 'selected' : ''}`}
+                onClick={() => handleUsefulnessFeedback('yes')}
+              >
+                Yes, it fits
+              </button>
+              <button
+                type="button"
+                className={`usefulness-btn ${usefulnessRating === 'partial' ? 'selected' : ''}`}
+                onClick={() => handleUsefulnessFeedback('partial')}
+              >
+                Partially
+              </button>
+              <button
+                type="button"
+                className={`usefulness-btn ${usefulnessRating === 'no' ? 'selected' : ''}`}
+                onClick={() => handleUsefulnessFeedback('no')}
+              >
+                Not really
+              </button>
+            </div>
+            {usefulnessRating === 'no' && feedbackReason === null && (
+              <div className="results-usefulness-reasons">
+                <div className="reasons-label">What was the issue?</div>
+                <div className="reasons-chips">
+                  <button
+                    type="button"
+                    className="reason-chip"
+                    onClick={() => handleFeedbackReason('Too expensive')}
+                  >
+                    Too expensive
+                  </button>
+                  <button
+                    type="button"
+                    className="reason-chip"
+                    onClick={() => handleFeedbackReason('Wrong style')}
+                  >
+                    Wrong style
+                  </button>
+                  <button
+                    type="button"
+                    className="reason-chip"
+                    onClick={() => handleFeedbackReason("Doesn't match my room")}
+                  >
+                    Doesn't match my room
+                  </button>
+                  <button
+                    type="button"
+                    className="reason-chip"
+                    onClick={() => handleFeedbackReason('Too few options')}
+                  >
+                    Too few options
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
           <div className="results-feedback-panel">
             <div className="results-feedback-title">None of these feel right?</div>

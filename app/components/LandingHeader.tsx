@@ -15,6 +15,7 @@ type MenuItem = {
 }
 
 interface LandingHeaderProps {
+  authEnabled: boolean
   user: User | null
   displayName: string
   role: AppRole
@@ -25,6 +26,7 @@ interface LandingHeaderProps {
 }
 
 export function LandingHeader({
+  authEnabled,
   user,
   displayName,
   role,
@@ -35,8 +37,9 @@ export function LandingHeader({
 }: LandingHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
+  const isSignedIn = authEnabled && Boolean(user)
 
-  const menuItems: MenuItem[] = user
+  const menuItems: MenuItem[] = isSignedIn
     ? (() => {
         const items: MenuItem[] = [
           { href: '/find', label: 'Start matching', index: '01', cta: true },
@@ -106,30 +109,32 @@ export function LandingHeader({
         </span>
       </button>
 
-      <div className={`site-header-auth-rail${scrolled ? ' site-header-auth-rail--scrolled' : ''}`}>
-        {user ? (
-          <>
-            <span className="site-header-user-label">
-              <span className="site-header-user-icon">👤</span>
-              <span className="site-header-user-name">{displayName}</span>
-            </span>
-            <form action="/auth/signout" method="post">
-              <button type="submit" className="site-header-auth-link site-header-auth-link--button">
-                Log out
+      {authEnabled ? (
+        <div className={`site-header-auth-rail${scrolled ? ' site-header-auth-rail--scrolled' : ''}`}>
+          {isSignedIn ? (
+            <>
+              <span className="site-header-user-label">
+                <span className="site-header-user-icon">👤</span>
+                <span className="site-header-user-name">{displayName}</span>
+              </span>
+              <form action="/auth/signout" method="post">
+                <button type="submit" className="site-header-auth-link site-header-auth-link--button">
+                  Log out
+                </button>
+              </form>
+            </>
+          ) : (
+            <>
+              <button type="button" className="site-header-auth-link site-header-auth-link--button" onClick={onOpenLogin}>
+                Log in
               </button>
-            </form>
-          </>
-        ) : (
-          <>
-            <button type="button" className="site-header-auth-link site-header-auth-link--button" onClick={onOpenLogin}>
-              Log in
-            </button>
-            <button type="button" className="site-header-auth-link site-header-auth-link--primary" onClick={onOpenSignup}>
-              Sign up
-            </button>
-          </>
-        )}
-      </div>
+              <button type="button" className="site-header-auth-link site-header-auth-link--primary" onClick={onOpenSignup}>
+                Sign up
+              </button>
+            </>
+          )}
+        </div>
+      ) : null}
 
       <header className={`site-header site-header--landing${scrolled ? ' site-header--scrolled' : ''}${menuOpen ? ' site-header--menu-open' : ''}`}>
         {/* Invisible placeholder keeps the 3-column grid intact */}
@@ -184,7 +189,7 @@ export function LandingHeader({
         </nav>
 
         <div className="nav-overlay-footer">
-          <span>{user ? `${getRoleLabel(role)} navigation active.` : 'Room-first furniture matching.'}</span>
+          <span>{isSignedIn ? `${getRoleLabel(role)} navigation active.` : 'Room-first furniture matching.'}</span>
         </div>
       </div>
     </>

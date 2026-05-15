@@ -1,7 +1,22 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { isAuthEnabled } from '@/lib/config/auth-config'
 
 export async function updateSession(request: NextRequest) {
+  const authEnabled = isAuthEnabled()
+
+  if (!authEnabled) {
+    const { pathname } = request.nextUrl
+    const authDisabledRedirectRoutes = ['/account', '/vendor', '/admin', '/login', '/signup']
+    const shouldRedirectHome = authDisabledRedirectRoutes.some(route => pathname.startsWith(route))
+
+    if (shouldRedirectHome) {
+      return NextResponse.redirect(new URL('/', request.nextUrl.origin))
+    }
+
+    return NextResponse.next({ request })
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(

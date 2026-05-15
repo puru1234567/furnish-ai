@@ -58,13 +58,7 @@ export function LandingHero({
         </div>
 
         <div className="social-proof">
-          <div className="avatars">
-            <div className="av" style={{ background: '#B8935A' }}>AS</div>
-            <div className="av" style={{ background: '#5C6B4A' }}>KM</div>
-            <div className="av" style={{ background: '#C4623A' }}>RP</div>
-            <div className="av" style={{ background: '#8A8178' }}>+58</div>
-          </div>
-          <p className="sp-text"><strong>4,200+</strong> room-led matches across Mumbai, Pune, Delhi & Bangalore</p>
+          <p className="hero-sub">Currently in early access · Mumbai, Pune, Delhi & Bangalore</p>
         </div>
       </div>
 

@@ -3,6 +3,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { isAuthEnabled } from '@/lib/config/auth-config'
 import { saveStoredResults } from '@/lib/utils/saved-results'
 import { FindStepQuestions } from './components/FindStepQuestions'
 import { FindStepRoomDetails } from './components/FindStepRoomDetails'
@@ -55,14 +56,17 @@ import {
 export default function FindPage() {
   // Form state
   const router = useRouter()
+  const authEnabled = isAuthEnabled()
 
   // Auth guard — middleware handles most cases; this covers client-side navigation
   useEffect(() => {
+    if (!authEnabled) return
+
     const supabase = createClient()
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) router.replace('/?auth=login&next=/find')
     })
-  }, [router])
+  }, [authEnabled, router])
 
   const [form, setForm] = useState<FormData>(DEFAULTS)
   const [inventoryPreview, setInventoryPreview] = useState<{
@@ -711,7 +715,7 @@ export default function FindPage() {
           LOADING STATE (step 99)
           ═════════════════════════════════ */}
       {step === 99 && (
-        <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: '100px', paddingBottom: '100px', background: 'var(--cream)' }}>
+        <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: '100px', paddingBottom: '100px', background: 'var(--cream)' }}>
           <div style={{ fontSize: '48px', marginBottom: '20px' }}>⏳</div>
           <h1 style={{ fontSize: '32px', fontFamily: "'DM Serif Display', serif", color: 'var(--charcoal)', marginBottom: '14px', textAlign: 'center' }}>
             Finding your matches
@@ -727,7 +731,7 @@ export default function FindPage() {
           ERROR STATE (step 101)
           ═════════════════════════════════ */}
       {step === 101 && (
-        <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: '100px', paddingBottom: '100px', background: 'var(--cream)' }}>
+        <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: '100px', paddingBottom: '100px', background: 'var(--cream)' }}>
           <div style={{ fontSize: '48px', marginBottom: '20px' }}>❌</div>
           <h1 style={{ fontSize: '36px', fontFamily: "'DM Serif Display', serif", color: 'var(--charcoal)', marginBottom: '14px', textAlign: 'center' }}>
             Something went wrong
