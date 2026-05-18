@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { isAuthEnabled } from '@/lib/config/auth-config'
 import { saveStoredResults } from '@/lib/utils/saved-results'
-import { FindStepQuestions } from './components/FindStepQuestions'
 import { FindStepRoomDetails } from './components/FindStepRoomDetails'
 import { FindStepPromptIntake } from './components/FindStepPromptIntake'
 import { ResultsDisplay } from './components/ResultsDisplay'
@@ -38,7 +37,6 @@ import {
 import {
   fmt,
   getFurnitureLabel,
-  getQuestionOptionLabel,
   getAnalysisLabel,
   getAnalysisText,
 } from './find-page-utils'
@@ -77,14 +75,12 @@ export default function FindPage() {
   } | null>(null)
   const [inventoryPreviewLoading, setInventoryPreviewLoading] = useState(false)
   const [totalItemsCount, setTotalItemsCount] = useState<number>(247)
-  const sectionRefs = useRef<Record<'room' | 'questions' | 'budget' | 'refine' | 'results', HTMLDivElement | null>>({
+  const sectionRefs = useRef<Record<'room' | 'budget' | 'refine' | 'results', HTMLDivElement | null>>({
     room: null,
-    questions: null,
     budget: null,
     refine: null,
     results: null,
   })
-  const roomAutoAdvanceRef = useRef(false)
 
   // Micro-response toasts
   const { microResponse, showMicroResponse } = useMicroResponse()
@@ -281,21 +277,7 @@ export default function FindPage() {
     if (file) handlePhotoFile(slot, file)
   }, [handlePhotoFile, setIsDraggingSlot])
 
-  // Room step continuation: trigger analysis if needed, then advance
-  const continueFromRoomStep = useCallback(async () => {
-    setQuestionSubIndex(0)
-    
-    // If room analysis hasn't been done yet, trigger it now
-    if (!roomAnalysis && !analysisLoading) {
-      console.log('[room-step] Room analysis not yet triggered, triggering now with uploaded photos')
-      await triggerRoomAnalysis(form.furnitureType, form.roomType)
-    } else if (roomAnalysis && contextualQuestions.length === 0 && !questionsLoading) {
-      // If analysis is done but questions haven't been generated, generate them
-      await generateContextualQuestions(roomAnalysis, form.furnitureType, form.roomType)
-    }
-    
-    next()
-  }, [roomAnalysis, analysisLoading, contextualQuestions.length, questionsLoading, triggerRoomAnalysis, generateContextualQuestions, form.furnitureType, form.roomType, setQuestionSubIndex, next])
+
 
   // Submit and get recommendations
   const submit = useCallback(async () => {
@@ -378,7 +360,6 @@ export default function FindPage() {
     resetAnalysis()
     resetRecommendations()
     setQuestionSubIndex(0)
-    roomAutoAdvanceRef.current = false
   }, [setStep, setRoomPhotos, setPhotoPreviews, resetAnalysis, resetRecommendations, setQuestionSubIndex])
 
   // Derived display values
@@ -431,11 +412,10 @@ export default function FindPage() {
   useEffect(() => {
     if (step === 0 || step === 99 || step === 101) return
 
-    const targetKey: 'room' | 'questions' | 'budget' | 'refine' | 'results' =
+    const targetKey: 'room' | 'budget' | 'refine' | 'results' =
       step === 1 ? 'room'
-      : step === 2 ? 'questions'
-      : step === 3 ? 'budget'
-      : step === 4 ? 'refine'
+      : step === 2 ? 'budget'
+      : step === 3 ? 'refine'
       : 'results'
 
     const target = sectionRefs.current[targetKey]
@@ -448,19 +428,7 @@ export default function FindPage() {
     return () => window.clearTimeout(timeout)
   }, [step])
 
-  useEffect(() => {
-    if (step !== 1) {
-      roomAutoAdvanceRef.current = false
-      return
-    }
 
-    const shouldAutoAdvance = photoCount > 0 && !!roomAnalysis && !analysisLoading && !questionsLoading
-    if (!shouldAutoAdvance || roomAutoAdvanceRef.current) return
-
-    roomAutoAdvanceRef.current = true
-    const timeout = window.setTimeout(() => next(), 520)
-    return () => window.clearTimeout(timeout)
-  }, [step, photoCount, roomAnalysis, analysisLoading, questionsLoading, next])
 
   // Render
   return (
@@ -526,45 +494,20 @@ export default function FindPage() {
                 onDragLeaveSlot={() => setIsDraggingSlot(null)}
                 onClearPhoto={clearPhoto}
                 onRetryAnalysis={() => {
-                  const previews = Object.values(photoPreviews).filter(Boolean) as string[]
-                  if (previews.length === 4) {
-                    void triggerRoomAnalysis(form.furnitureType, form.roomType)
-                  }
+                  void triggerRoomAnalysis(form.furnitureType, form.roomType)
+                }}
+                onRetryQuestions={() => {
+                  void generateContextualQuestions(roomAnalysis, form.furnitureType, form.roomType)
                 }}
                 onSetField={set}
-                onBack={back}
-                onSkip={next}
-                onContinue={() => { void continueFromRoomStep() }}
-              />
-            </div>
-          )}
-
-          {step >= 2 && (
-            <div ref={element => { sectionRefs.current.questions = element }} className={`progressive-section ${step === 2 ? 'active' : 'completed'}`}>
-              <FindStepQuestions
-                form={form}
-                livePillText={livePillText}
-                echoLine={echoLine}
-                showProgress={false}
-                furnitureTypeLabel={form.furnitureType}
-                selectedContextualCount={selectedContextualCount}
-                roomAnalysis={roomAnalysis}
-                contextualQuestions={contextualQuestions}
-                questionSubIndex={questionSubIndex}
-                questionsLoading={questionsLoading}
                 questionsError={questionsError}
-                getAnalysisLabel={getAnalysisLabel}
-                getAnalysisText={getAnalysisText}
-                getQuestionOptionLabel={getQuestionOptionLabel}
-                onRetry={() => { void generateContextualQuestions(roomAnalysis, form.furnitureType, form.roomType) }}
+                questionSubIndex={questionSubIndex}
                 onSelectAnswer={(questionId, optionId, questionText, optionLabel) => {
                   set('contextualAnswers', { ...form.contextualAnswers, [questionId]: optionId })
                   showMicroResponse('Answer saved', `${questionText} → ${optionLabel}`, 'success')
                   setTimeout(() => {
                     if (questionSubIndex < contextualQuestions.length - 1) {
                       incrementQuestionSubIndex()
-                    } else {
-                      next()
                     }
                   }, 320)
                 }}
@@ -575,12 +518,12 @@ export default function FindPage() {
             </div>
           )}
 
-          {step >= 3 && (
-            <div ref={element => { sectionRefs.current.budget = element }} className={`progressive-section ${step === 3 ? 'active' : 'completed'}`}>
+          {step >= 2 && (
+            <div ref={element => { sectionRefs.current.budget = element }} className={`progressive-section ${step === 2 ? 'active' : 'completed'}`}>
               <div className="page active">
                 <div className="form-body journey-form-body">
                   {echoLine && <div className="echo-panel">{echoLine}</div>}
-                  <div className="form-eyebrow">Step 4 of 5</div>
+                  <div className="form-eyebrow">Step 3 of 4</div>
                   <h2 className="form-title">Delivery fit and budget guardrails</h2>
                   <p className="form-sub">Keep your budget anchor, choose urgency, and move on.</p>
 
@@ -640,12 +583,12 @@ export default function FindPage() {
             </div>
           )}
 
-          {step >= 4 && (
-            <div ref={element => { sectionRefs.current.refine = element }} className={`progressive-section ${step === 4 ? 'active' : 'completed'}`}>
+          {step >= 3 && (
+            <div ref={element => { sectionRefs.current.refine = element }} className={`progressive-section ${step === 3 ? 'active' : 'completed'}`}>
               <div className="page active">
                 <div className="form-body journey-form-body">
                   {echoLine && <div className="echo-panel">{echoLine}</div>}
-                  <div className="form-eyebrow">Step 5 of 5 — optional</div>
+                  <div className="form-eyebrow">Step 4 of 4 — optional</div>
                   <h2 className="form-title">Fine-tune <span className="optional-tag">all optional — skip to results</span></h2>
                   <p className="form-sub">Optional only. Exclude obvious mismatches or add one taste bias, then get the shortlist.</p>
 
@@ -751,11 +694,11 @@ export default function FindPage() {
       )}
 
       {/* ✦ TOP PROGRESS BAR */}
-      {step >= 0 && step <= 4 && (
-        <div id="top-progress-bar" style={{ width: `${(step / 4) * 100}%` }} />
+      {step >= 0 && step <= 3 && (
+        <div id="top-progress-bar" style={{ width: `${(step / 3) * 100}%` }} />
       )}
 
-      {microResponse && step >= 0 && step <= 4 && (
+      {microResponse && step >= 0 && step <= 3 && (
         <div className={`micro-response ${microResponse.tone === 'success' ? 'success' : ''}`}>
           <div className="micro-response-label">System reply</div>
           <div className="micro-response-title">{microResponse.title}</div>
