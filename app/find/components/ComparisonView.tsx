@@ -7,6 +7,7 @@ interface ComparisonViewProps {
   compareItems: RecommendedItem[]
   onClose: () => void
   onRemoveItem: (id: string) => void
+  getWhyCopy: (item: RecommendedItem) => string
 }
 
 const SPEC_ROWS: { label: string; key: keyof RecommendedItem; format?: (v: unknown) => string }[] = [
@@ -48,7 +49,7 @@ function getBestValue(items: RecommendedItem[], key: keyof RecommendedItem): str
   return null
 }
 
-export function ComparisonView({ compareItems, onClose, onRemoveItem }: ComparisonViewProps) {
+export function ComparisonView({ compareItems, onClose, onRemoveItem, getWhyCopy }: ComparisonViewProps) {
   if (compareItems.length === 0) return null
 
   return (
@@ -99,7 +100,7 @@ export function ComparisonView({ compareItems, onClose, onRemoveItem }: Comparis
                 <td className="comparison-row-label">Why it fits you</td>
                 {compareItems.map(item => (
                   <td key={item.id} className="comparison-row-value">
-                    <div className="comparison-why">{item.whyItFits}</div>
+                    <div className="comparison-why">{getWhyCopy(item)}</div>
                   </td>
                 ))}
               </tr>

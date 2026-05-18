@@ -434,7 +434,18 @@ export default function FindPage() {
   return (
     <>
       <header className="site-header">
-        <div className="logo">Furnish<span>AI</span></div>
+        <button
+          type="button"
+          className={`logo ${step === 99 ? 'logo-active' : ''}`}
+          onClick={() => {
+            if (step === 99) {
+              router.push('/')
+            }
+          }}
+          style={{ border: 'none', background: 'none', font: 'inherit' }}
+        >
+          Furnish<span>AI</span>
+        </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <Link href="/" className="btn-skip">← Back to home</Link>
         </div>

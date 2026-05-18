@@ -145,7 +145,7 @@ export default function HomePage() {
   const displayName = getDisplayName(user, profile)
 
   return (
-    <>
+    <div className="home-page-wrapper">
       <LandingHeader
         authEnabled={authEnabled}
         user={user}
@@ -178,6 +178,6 @@ export default function HomePage() {
           onSignedIn={handleSignedIn}
         />
       ) : null}
-    </>
+    </div>
   )
 }

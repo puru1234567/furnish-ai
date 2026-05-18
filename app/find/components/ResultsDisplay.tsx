@@ -56,10 +56,15 @@ export function ResultsDisplay({
   const selectedContextualCount = Object.keys(form.contextualAnswers).length
   const primaryResults = results.filter(item => item.tier !== 'stretch')
   const fallbackPrimaryPool = primaryResults.length > 0 ? primaryResults : results
-  const visiblePrimaryResults = fallbackPrimaryPool.slice(0, 3)
+  const visiblePrimaryResults = fallbackPrimaryPool
   const visibleStretchResults = results
     .filter(item => item.tier === 'stretch' && !visiblePrimaryResults.some(primary => primary.id === item.id))
-    .slice(0, 2)
+  const gridColumnCount = 3
+  const occupiedSlotsInLastRow = visiblePrimaryResults.length % gridColumnCount
+  const remainingSlotsInLastRow = occupiedSlotsInLastRow === 0 ? 0 : gridColumnCount - occupiedSlotsInLastRow
+  const stretchPromotedToGrid = visibleStretchResults.slice(0, remainingSlotsInLastRow)
+  const remainingStretchResults = visibleStretchResults.slice(stretchPromotedToGrid.length)
+  const promotedStretchGridSpan = stretchPromotedToGrid.length === 1 ? Math.max(1, remainingSlotsInLastRow) : 1
   const hasStretchResults = results.some(item => item.tier === 'stretch')
   const compareItemObjects = results.filter(r => compareItems.includes(r.id))
   const activeSortLabel = SORT_OPTIONS.find(o => o.value === sortBy)?.label ?? 'Best Match'
@@ -88,34 +93,19 @@ export function ResultsDisplay({
   }, [])
 
   const buildWhyCopy = useCallback((item: RecommendedItem, variant: 'primary' | 'stretch') => {
-    const roomSentence = spatialSignal
-      ? `Works well with ${cleanSignal(spatialSignal).toLowerCase()}.`
-      : `Keeps the ${form.roomType.toLowerCase()} feeling open and usable.`
+    const baseMaterial = item.material.split('(')[0].trim()
+    const durabilitySentence = `Durability score: ${item.durabilityScore}/10.`
 
     if (variant === 'stretch') {
-      const upgradeSentence = item.durabilityScore >= 8
-        ? `Durability score of ${item.durabilityScore}/10 makes it worth the premium.`
-        : contextualSignal
-          ? `Leans into your ${cleanSignal(contextualSignal).toLowerCase()} preference at a higher quality level.`
-          : `Better ${item.material.toLowerCase()} construction than the core picks.`
+      const premiumSentence = item.durabilityScore >= 8
+        ? 'Higher build quality than core picks.'
+        : `Upgraded ${baseMaterial.toLowerCase()} construction.`
 
-      return `${roomSentence} ${upgradeSentence} Material: ${item.material.split('(')[0].trim()}. ${item.warrantyYears}-year warranty.`
+      return `${premiumSentence} Material: ${baseMaterial}. ${item.warrantyYears}-year warranty. ${durabilitySentence}`
     }
 
-    const fitSentence = contextualSignal
-      ? `Addresses your ${cleanSignal(contextualSignal).toLowerCase()} directly without adding visual clutter.`
-      : item.inStock
-        ? `Ready to ship this week—good for quick setups.`
-        : `Balances everyday practicality with restrained aesthetics.`
-
-    const materialLine = item.material.toLowerCase().includes('fabric')
-      ? `Fabric composition supports durability. `
-      : item.material.toLowerCase().includes('wood')
-        ? `Solid construction matches your room's needs. `
-        : `Material choice complements room flow. `
-
-    return `${roomSentence} ${fitSentence} ${materialLine}${item.durabilityScore >= 7 ? `Strong durability (${item.durabilityScore}/10).` : ''}`
-  }, [cleanSignal, contextualSignal, form.roomType, spatialSignal])
+    return `Material: ${baseMaterial}. ${item.warrantyYears}-year warranty. ${durabilitySentence}`
+  }, [])
 
   const truncatePill = useCallback((value: string) => {
     return value.length > 18 ? `${value.slice(0, 17).trimEnd()}…` : value
@@ -142,6 +132,11 @@ export function ResultsDisplay({
     onCompareToggle(id)
     if (compareItems.length <= 1) setShowCompareView(false)
   }, [onCompareToggle, compareItems.length])
+
+  const handleClearAllCompare = useCallback(() => {
+    compareItems.forEach(id => onCompareToggle(id))
+    setShowCompareView(false)
+  }, [compareItems, onCompareToggle])
 
   const toggleWishlist = useCallback((id: string) => {
     setWishlistItems(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
@@ -188,14 +183,94 @@ export function ResultsDisplay({
     })
   }, [form])
 
-  const renderResultCard = (item: RecommendedItem, index: number, variant: 'primary' | 'stretch') => {
+  const renderResultCard = (
+    item: RecommendedItem,
+    index: number,
+    variant: 'primary' | 'stretch',
+    options?: { compactStretch?: boolean; gridSpan?: number }
+  ) => {
     const isCompared = compareItems.includes(item.id)
     const isWishlisted = wishlistItems.includes(item.id)
     const priceDelta = item.price - form.budget
     const whyCopy = buildWhyCopy(item, variant)
     const attributePills = buildPills(item)
+    const compactStretch = options?.compactStretch ?? true
+    const gridSpan = options?.gridSpan ?? 1
 
     if (variant === 'stretch') {
+      if (!compactStretch) {
+        return (
+          <article
+            key={item.id}
+            className={`result-card stretch-card promoted-stretch-card ${isCompared ? 'in-compare' : ''} ${isWishlisted ? 'in-wishlist' : ''}`}
+            style={gridSpan > 1 ? { gridColumn: `span ${gridSpan}` } : undefined}
+          >
+            <div className="rank-badge stretch-badge">↑ Stretch Pick</div>
+            <div className="card-actions">
+              <button
+                type="button"
+                className={`compare-check ${isCompared ? 'checked' : ''}`}
+                title={isCompared ? 'Remove from compare' : 'Add to compare'}
+                onClick={() => onCompareToggle(item.id)}
+              >
+                {isCompared ? '☑' : '☐'}
+              </button>
+              <button
+                type="button"
+                className="card-wishlist-btn"
+                onClick={() => toggleWishlist(item.id)}
+                title={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
+              >
+                {isWishlisted ? '❤️' : '🤍'}
+              </button>
+            </div>
+            <div className="card-img" aria-hidden="true" />
+            <div className="card-body">
+              <div className="card-brand">{item.brand}</div>
+              <div className="card-name">{item.name}</div>
+              <div className="card-rating">★ {item.rating} · <span>{item.reviewCount} reviews</span></div>
+              <div className="stretch-price-row">
+                <div className="stretch-price-stack">
+                  <div className="card-price">{fmt(item.price)}</div>
+                  <div className="card-location-line">{form.city} · {item.inStock ? 'In stock' : 'Ships soon'}</div>
+                </div>
+                <div className="stretch-overage">+{fmt(priceDelta)} over your budget</div>
+              </div>
+              <div className="card-divider" />
+              <div className="card-why stretch-callout">
+                <div className="why-label stretch-callout-label">Why it's worth it</div>
+                {whyCopy}
+              </div>
+              <div className="card-chip-row">
+                {attributePills.map(pill => (
+                  <span key={`${item.id}-${pill}`} className="card-chip">{pill}</span>
+                ))}
+              </div>
+              <div className="card-footer">
+                <div className="card-delivery">Delivery in 5-7 days · {form.city}</div>
+                <button
+                  type="button"
+                  className="card-cta"
+                  onClick={() => {
+                    console.log({
+                      event: 'product_click',
+                      item_id: item.id,
+                      item_name: item.name,
+                      rank_position: 'stretch-grid',
+                      price: item.price,
+                      timestamp: new Date().toISOString(),
+                    })
+                    window.open(item.productUrl, '_blank')
+                  }}
+                >
+                  View piece →
+                </button>
+              </div>
+            </div>
+          </article>
+        )
+      }
+
       return (
         <article key={item.id} className={`result-card stretch-card stretch-card-compact ${isCompared ? 'in-compare' : ''} ${isWishlisted ? 'in-wishlist' : ''}`}>
           <div className="rank-badge stretch-badge">↑ Stretch Pick</div>
@@ -456,9 +531,15 @@ export function ResultsDisplay({
 
           <div className="results-grid">
             {visiblePrimaryResults.map((item, idx) => renderResultCard(item, idx, 'primary'))}
+            {stretchPromotedToGrid.map((item, idx) =>
+              renderResultCard(item, idx, 'stretch', {
+                compactStretch: false,
+                gridSpan: stretchPromotedToGrid.length === 1 ? promotedStretchGridSpan : 1,
+              })
+            )}
           </div>
 
-          {visibleStretchResults.length > 0 && (
+          {remainingStretchResults.length > 0 && (
             <section className="stretch-section compact-rail">
               <div className="stretch-section-header compact">
                 <div>
@@ -470,7 +551,9 @@ export function ResultsDisplay({
                 </div>
               </div>
               <div className="stretch-grid compact">
-                {visibleStretchResults.map((item, idx) => renderResultCard(item, idx, 'stretch'))}
+                {remainingStretchResults.map((item, idx) =>
+                  renderResultCard(item, idx, 'stretch', { compactStretch: true })
+                )}
               </div>
             </section>
           )}
@@ -551,14 +634,29 @@ export function ResultsDisplay({
       </div>
 
       <div className="compare-fab">
-        {compareItems.length > 0 ? (
-          <button
-            type="button"
-            className="compare-fab-btn compare-fab-active"
-            onClick={() => setShowCompareView(true)}
-          >
-            ⊡ Compare ({compareItems.length} selected) →
-          </button>
+        {compareItems.length === 1 ? (
+          <div className="compare-fab-message">
+            ⊡ Select one more to start comparing
+          </div>
+        ) : compareItems.length >= 2 ? (
+          <div className="compare-fab-with-clear">
+            <button
+              type="button"
+              className="compare-fab-btn compare-fab-active"
+              onClick={() => setShowCompareView(true)}
+            >
+              ⊡ Compare ({compareItems.length} selected) →
+            </button>
+            <button
+              type="button"
+              className="compare-fab-clear"
+              onClick={handleClearAllCompare}
+              title="Clear all selections"
+              aria-label="Clear selected items"
+            >
+              ✕
+            </button>
+          </div>
         ) : (
           <button
             type="button"
@@ -591,6 +689,7 @@ export function ResultsDisplay({
           compareItems={compareItemObjects}
           onClose={() => setShowCompareView(false)}
           onRemoveItem={handleCompareRemove}
+          getWhyCopy={item => buildWhyCopy(item, item.tier === 'stretch' ? 'stretch' : 'primary')}
         />
       )}
     </>
