@@ -181,7 +181,7 @@ OUTPUT SHAPE (exact keys, no extras):
       "id": "<exact item id from ITEMS>",
       "score": <0-100>,
       "tier": "primary" | "stretch",
-      "whyItFits": "<≤40 words — MUST include ₹price OR dimensions in cm AND one signal from: pain/room/contextual/trigger/existing>",
+      "whyItFits": "<2 sentences max. Open with the item's specific material or dimension (e.g. 'At 195cm wide...' or 'The microfiber fabric...'). Reference at least one specific user input from context (room color, budget, who uses it, a must-have feature, or a stated pain point). Never use the same opening word or phrase as another item's explanation in the same response>",
       "stretchJustification": null | "₹[exact_overage] over your ₹${budget} budget. Worth it because: [specific improvement vs likely in-budget options] and why that matters for this user's room, pain point, or contextual answers"
     }
   ],
@@ -195,5 +195,11 @@ FORBIDDEN (accuracy killers):
 - Overriding pain_point hard exclusions
 - whyItFits without a real number (₹, cm, or rating)
 - stretch items without a quantified improvement tied to user needs
+
+Each item explanation must:
+- Open with the item's specific material or dimension (e.g. 'At 195cm wide...' or 'The microfiber fabric...')
+- Reference at least one specific user input from the context provided (room color, budget, who uses it, a must-have feature, or a stated pain point)
+- Never use the same opening word or phrase as another item's explanation in the same response
+- Be 2 sentences maximum
 ${relaxedFlags.length > 0 ? `\nNOTE: ${relaxedFlags.join('; ')}` : ''}`
 }

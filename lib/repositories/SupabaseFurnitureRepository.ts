@@ -65,29 +65,29 @@ export class SupabaseFurnitureRepository implements IFurnitureRepository {
       id: row.id,
       name: row.name,
       category: row.category,
-      price: row.price,
+      price: Number(row.price) ?? 0,
       brand: row.brand,
       cities: row.cities,
       deliveryAvailable: row.delivery_available,
       style: row.style_tags as any,
       material: row.material,
       dimensions: {
-        width: row.width_cm,
-        depth: row.depth_cm,
-        height: row.height_cm,
+        width: Number(row.width_cm) ?? 0,
+        depth: Number(row.depth_cm) ?? 0,
+        height: Number(row.height_cm) ?? 0,
       },
       durability: row.durability,
-      durabilityScore: row.durability_score,
+      durabilityScore: Number(row.durability_score) ?? 0,
       maintenanceEase: row.maintenance_ease,
-      warrantyYears: row.warranty_years,
+      warrantyYears: Number(row.warranty_years) ?? 0,
       assemblyComplexity: row.assembly_complexity,
       imageUrl: row.image_url ?? '',
       productUrl: row.product_url ?? '',
       inStock: row.in_stock,
-      rating: row.rating,
-      reviewCount: row.review_count,
+      rating: Number(row.rating) ?? 0,
+      reviewCount: Number(row.review_count) ?? 0,
       description: row.description ?? '',
-      tags: row.product_tags,
+      tags: row.product_tags ?? [],
     }
   }
 
@@ -99,150 +99,216 @@ export class SupabaseFurnitureRepository implements IFurnitureRepository {
     
     // For now, use simple fetch-based approach
     // In production, use @supabase/supabase-js client for better abstractions
-    const response = await fetch(`${this.supabaseUrl}/rest/v1/products`, {
-      method: 'GET',
-      headers: {
-        apikey: this.supabaseAnonKey,
-        Authorization: `Bearer ${this.supabaseAnonKey}`,
-        'Content-Type': 'application/json',
-      },
-    })
+    try {
+      const response = await fetch(`${this.supabaseUrl}/rest/v1/products`, {
+        method: 'GET',
+        headers: {
+          apikey: this.supabaseAnonKey,
+          Authorization: `Bearer ${this.supabaseAnonKey}`,
+          'Content-Type': 'application/json',
+        },
+      })
 
-    if (!response.ok) {
-      throw new Error(`Supabase query failed: ${response.statusText}`)
+      if (!response.ok) {
+        const errorBody = await response.text()
+        console.error(`[SupabaseFurnitureRepository] query failed:`, response.status, errorBody)
+        return []
+      }
+
+      const data: T[] = await response.json()
+      return data
+    } catch (error) {
+      console.error(`[SupabaseFurnitureRepository] query threw:`, error)
+      return []
     }
-
-    return await response.json()
   }
 
   async findById(id: string): Promise<FurnitureItem | null> {
-    const response = await fetch(
-      `${this.supabaseUrl}/rest/v1/products?id=eq.${encodeURIComponent(id)}`,
-      {
-        headers: {
-          apikey: this.supabaseAnonKey,
-          Authorization: `Bearer ${this.supabaseAnonKey}`,
-        },
-      }
-    )
+    try {
+      const response = await fetch(
+        `${this.supabaseUrl}/rest/v1/products?id=eq.${encodeURIComponent(id)}`,
+        {
+          headers: {
+            apikey: this.supabaseAnonKey,
+            Authorization: `Bearer ${this.supabaseAnonKey}`,
+          },
+        }
+      )
 
-    if (!response.ok) return null
-    const rows: SupabaseRow[] = await response.json()
-    return rows.length > 0 ? this.rowToItem(rows[0]) : null
+      if (!response.ok) {
+        const errorBody = await response.text()
+        console.error(`[SupabaseFurnitureRepository] findById failed:`, response.status, errorBody)
+        return null
+      }
+
+      const rows: SupabaseRow[] = await response.json()
+      return rows.length > 0 ? this.rowToItem(rows[0]) : null
+    } catch (error) {
+      console.error(`[SupabaseFurnitureRepository] findById threw:`, error)
+      return null
+    }
   }
 
   async findByCategory(category: FurnitureCategory): Promise<FurnitureItem[]> {
-    const response = await fetch(
-      `${this.supabaseUrl}/rest/v1/products?category=eq.${encodeURIComponent(category)}`,
-      {
-        headers: {
-          apikey: this.supabaseAnonKey,
-          Authorization: `Bearer ${this.supabaseAnonKey}`,
-        },
-      }
-    )
+    try {
+      const response = await fetch(
+        `${this.supabaseUrl}/rest/v1/products?category=eq.${encodeURIComponent(category)}`,
+        {
+          headers: {
+            apikey: this.supabaseAnonKey,
+            Authorization: `Bearer ${this.supabaseAnonKey}`,
+          },
+        }
+      )
 
-    if (!response.ok) return []
-    const rows: SupabaseRow[] = await response.json()
-    return rows.map(row => this.rowToItem(row))
+      if (!response.ok) {
+        const errorBody = await response.text()
+        console.error(`[SupabaseFurnitureRepository] findByCategory failed:`, response.status, errorBody)
+        return []
+      }
+
+      const rows: SupabaseRow[] = await response.json()
+      return rows.map(row => this.rowToItem(row))
+    } catch (error) {
+      console.error(`[SupabaseFurnitureRepository] findByCategory threw:`, error)
+      return []
+    }
   }
 
   async findByCriteria(filter: FurnitureFilter): Promise<FurnitureItem[]> {
-    // Build query string from filter constraints
-    const params = new URLSearchParams()
+    try {
+      const params = new URLSearchParams()
 
-    if (filter.category) params.append('category', `eq.${filter.category}`)
-    if (filter.priceMin !== undefined) params.append('price', `gte.${filter.priceMin}`)
-    if (filter.priceMax !== undefined) params.append('price', `lte.${filter.priceMax}`)
-    if (filter.inStockOnly) params.append('in_stock', 'eq.true')
-    if (filter.brand) params.append('brand', `eq.${filter.brand}`)
-    if (filter.deliveryAvailable) params.append('delivery_available', 'eq.true')
+      if (filter.category) params.append('category', `eq.${filter.category}`)
+      if (filter.priceMin !== undefined) params.append('price', `gte.${filter.priceMin}`)
+      if (filter.priceMax !== undefined) params.append('price', `lte.${filter.priceMax}`)
+      if (filter.inStockOnly) params.append('in_stock', 'eq.true')
+      if (filter.brand) params.append('brand', `eq.${filter.brand}`)
+      if (filter.deliveryAvailable) params.append('delivery_available', 'eq.true')
 
-    const response = await fetch(
-      `${this.supabaseUrl}/rest/v1/products?${params.toString()}`,
-      {
+      const response = await fetch(
+        `${this.supabaseUrl}/rest/v1/products?${params.toString()}`,
+        {
+          headers: {
+            apikey: this.supabaseAnonKey,
+            Authorization: `Bearer ${this.supabaseAnonKey}`,
+          },
+        }
+      )
+
+      if (!response.ok) {
+        const errorBody = await response.text()
+        console.error(`[SupabaseFurnitureRepository] findByCriteria failed:`, response.status, errorBody)
+        return []
+      }
+
+      const rows: SupabaseRow[] = await response.json()
+      return rows
+        .filter(row => !filter.city || (row.cities ?? []).includes(filter.city))
+        .filter(row => !filter.tags || filter.tags.length === 0 || filter.tags.every(tag => (row.product_tags ?? []).includes(tag)))
+        .map(row => this.rowToItem(row))
+    } catch (error) {
+      console.error(`[SupabaseFurnitureRepository] findByCriteria threw:`, error)
+      return []
+    }
+  }
+
+  async findAll(): Promise<FurnitureItem[]> {
+    try {
+      // Fetch all products with pagination: offset=0, limit=1000 (Supabase default max)
+      const response = await fetch(`${this.supabaseUrl}/rest/v1/products?limit=1000&offset=0`, {
         headers: {
           apikey: this.supabaseAnonKey,
           Authorization: `Bearer ${this.supabaseAnonKey}`,
         },
+      })
+
+      if (!response.ok) {
+        const errorBody = await response.text()
+        console.error(`[SupabaseFurnitureRepository] findAll failed:`, response.status, errorBody)
+        return []
       }
-    )
 
-    if (!response.ok) return []
-    const rows: SupabaseRow[] = await response.json()
-    
-    // Apply city and tags filters client-side (for now)
-    return rows
-      .filter(row => !filter.city || row.cities.includes(filter.city))
-      .filter(row => !filter.tags || filter.tags.length === 0 || filter.tags.every(tag => row.product_tags.includes(tag)))
-      .map(row => this.rowToItem(row))
-  }
-
-  async findAll(): Promise<FurnitureItem[]> {
-    const response = await fetch(`${this.supabaseUrl}/rest/v1/products`, {
-      headers: {
-        apikey: this.supabaseAnonKey,
-        Authorization: `Bearer ${this.supabaseAnonKey}`,
-      },
-    })
-
-    if (!response.ok) return []
-    const rows: SupabaseRow[] = await response.json()
-    return rows.map(row => this.rowToItem(row))
+      const rows: SupabaseRow[] = await response.json()
+      console.debug(`[SupabaseFurnitureRepository] findAll returned ${rows.length} items`)
+      return rows.map(row => this.rowToItem(row))
+    } catch (error) {
+      console.error(`[SupabaseFurnitureRepository] findAll threw:`, error)
+      return []
+    }
   }
 
   async count(filter?: FurnitureFilter): Promise<number> {
-    const results = filter ? await this.findByCriteria(filter) : await this.findAll()
-    return results.length
+    try {
+      const results = filter ? await this.findByCriteria(filter) : await this.findAll()
+      return results.length
+    } catch (error) {
+      console.error(`[SupabaseFurnitureRepository] count threw:`, error)
+      return 0
+    }
   }
 
   async findByIds(ids: string[]): Promise<FurnitureItem[]> {
-    if (ids.length === 0) return []
+    try {
+      if (ids.length === 0) return []
 
-    // Supabase doesn't support direct array filtering easily, so fetch all and filter
-    const response = await fetch(`${this.supabaseUrl}/rest/v1/products`, {
-      headers: {
-        apikey: this.supabaseAnonKey,
-        Authorization: `Bearer ${this.supabaseAnonKey}`,
-      },
-    })
+      const response = await fetch(`${this.supabaseUrl}/rest/v1/products`, {
+        headers: {
+          apikey: this.supabaseAnonKey,
+          Authorization: `Bearer ${this.supabaseAnonKey}`,
+        },
+      })
 
-    if (!response.ok) return []
-    const rows: SupabaseRow[] = await response.json()
-    const idSet = new Set(ids)
-    return rows.filter(row => idSet.has(row.id)).map(row => this.rowToItem(row))
+      if (!response.ok) {
+        const errorBody = await response.text()
+        console.error(`[SupabaseFurnitureRepository] findByIds failed:`, response.status, errorBody)
+        return []
+      }
+
+      const rows: SupabaseRow[] = await response.json()
+      const idSet = new Set(ids)
+      return rows.filter(row => idSet.has(row.id)).map(row => this.rowToItem(row))
+    } catch (error) {
+      console.error(`[SupabaseFurnitureRepository] findByIds threw:`, error)
+      return []
+    }
   }
 
   async getDistinctValues(field: 'brand' | 'city' | 'category'): Promise<string[]> {
-    let url = `${this.supabaseUrl}/rest/v1/products?select=${field}`
-    
-    const response = await fetch(url, {
-      headers: {
-        apikey: this.supabaseAnonKey,
-        Authorization: `Bearer ${this.supabaseAnonKey}`,
-      },
-    })
+    try {
+      let url = `${this.supabaseUrl}/rest/v1/products?select=${field}`
 
-    if (!response.ok) return []
-    const rows: any[] = await response.json()
+      const response = await fetch(url, {
+        headers: {
+          apikey: this.supabaseAnonKey,
+          Authorization: `Bearer ${this.supabaseAnonKey}`,
+        },
+      })
 
-    // Handle different field types
-    if (field === 'city') {
-      // cities is an array, so flatten
-      const cities = new Set<string>()
-      rows.forEach(row => {
-        if (Array.isArray(row.cities)) {
-          row.cities.forEach((city: string) => cities.add(city))
-        }
-      })
-      return Array.from(cities).sort()
-    } else {
-      // brand and category are single values
-      const values = new Set<string>()
-      rows.forEach(row => {
-        if (row[field]) values.add(row[field])
-      })
-      return Array.from(values).sort()
+      if (!response.ok) {
+        const errorBody = await response.text()
+        console.error(`[SupabaseFurnitureRepository] getDistinctValues failed:`, response.status, errorBody)
+        return []
+      }
+
+      const rows: any[] = await response.json()
+
+      if (field === 'city') {
+        const cities = new Set<string>()
+        rows.forEach(row => {
+          (row.cities ?? []).forEach((city: string) => cities.add(city))
+        })
+        return Array.from(cities).sort()
+      } else {
+        const values = new Set<string>()
+        rows.forEach(row => {
+          if (row[field]) values.add(row[field])
+        })
+        return Array.from(values).sort()
+      }
+    } catch (error) {
+      console.error(`[SupabaseFurnitureRepository] getDistinctValues threw:`, error)
+      return []
     }
   }
 }

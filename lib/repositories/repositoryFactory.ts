@@ -3,48 +3,110 @@
 // Implements Factory pattern and Dependency Inversion principle
 
 import type { IFurnitureRepository } from './IFurnitureRepository'
+import type { FurnitureCategory, FurnitureItem } from '@/lib/types'
+import { furnitureData } from '@/lib/furniture-data'
 import { InMemoryFurnitureRepository } from './InMemoryFurnitureRepository'
 import { SupabaseFurnitureRepository } from './SupabaseFurnitureRepository'
-import { furnitureData } from '@/lib/furniture-data'
 
 let repositoryInstance: IFurnitureRepository | null = null
 
+class FallbackFurnitureRepository implements IFurnitureRepository {
+  constructor(
+    private readonly primary: IFurnitureRepository,
+    private readonly fallback: IFurnitureRepository,
+  ) {}
+
+  private async withFallback<T>(operation: () => Promise<T>, fallbackOperation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation()
+    } catch (error) {
+      if (process.env.NODE_ENV === 'production') {
+        throw error
+      }
+
+      console.warn('[FallbackFurnitureRepository] Supabase failed, using in-memory fallback')
+      return fallbackOperation()
+    }
+  }
+
+  findById(id: string): Promise<FurnitureItem | null> {
+    return this.withFallback(() => this.primary.findById(id), () => this.fallback.findById(id))
+  }
+
+  findByCategory(category: FurnitureCategory): Promise<FurnitureItem[]> {
+    return this.withFallback(
+      () => this.primary.findByCategory(category),
+      () => this.fallback.findByCategory(category),
+    )
+  }
+
+  findByCriteria(filter: Parameters<IFurnitureRepository['findByCriteria']>[0]): Promise<FurnitureItem[]> {
+    return this.withFallback(
+      () => this.primary.findByCriteria(filter),
+      () => this.fallback.findByCriteria(filter),
+    )
+  }
+
+  findAll(): Promise<FurnitureItem[]> {
+    return this.withFallback(() => this.primary.findAll(), () => this.fallback.findAll())
+  }
+
+  count(filter?: Parameters<IFurnitureRepository['count']>[0]): Promise<number> {
+    return this.withFallback(() => this.primary.count(filter), () => this.fallback.count(filter))
+  }
+
+  findByIds(ids: string[]): Promise<FurnitureItem[]> {
+    return this.withFallback(() => this.primary.findByIds(ids), () => this.fallback.findByIds(ids))
+  }
+
+  getDistinctValues(field: Parameters<IFurnitureRepository['getDistinctValues']>[0]): Promise<string[]> {
+    return this.withFallback(
+      () => this.primary.getDistinctValues(field),
+      () => this.fallback.getDistinctValues(field),
+    )
+  }
+}
+
 /**
- * Determines which repository implementation to use based on environment variables.
- * 
- * Feature flags:
- * - USE_SUPABASE_DB: Set to 'true' to use Supabase/Postgres (default: in-memory)
- * - NEXT_PUBLIC_SUPABASE_URL: Supabase project URL
- * - NEXT_PUBLIC_SUPABASE_ANON_KEY: Supabase anon key
- * 
- * Priority:
- * 1. If SUPABASE is explicitly enabled and credentials exist → SupabaseFurnitureRepository
- * 2. Otherwise → InMemoryFurnitureRepository
+ * Database-only repository factory.
+ * Always uses Supabase/Postgres backend.
+ *
+ * Required environment variables:
+ * - NEXT_PUBLIC_SUPABASE_URL
+ * - SUPABASE_SERVICE_ROLE_KEY (preferred) or NEXT_PUBLIC_SUPABASE_ANON_KEY
  */
 function createRepositoryInstance(): IFurnitureRepository {
-  const useSupabase = process.env.USE_SUPABASE_DB === 'true'
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  // Server-side routes use service role key (bypasses RLS); anon key is a fallback
   const supabaseKey =
     process.env.SUPABASE_SERVICE_ROLE_KEY ??
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
     process.env.SUPABASE_ANON_KEY
+  const inMemoryRepo = new InMemoryFurnitureRepository(furnitureData)
 
-  if (useSupabase && supabaseUrl && supabaseKey) {
-    console.log('[repositoryFactory] Using SupabaseFurnitureRepository')
-    return new SupabaseFurnitureRepository(supabaseUrl, supabaseKey)
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error(
+      '[repositoryFactory] Supabase credentials missing. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or NEXT_PUBLIC_SUPABASE_ANON_KEY).'
+    )
   }
 
-  console.log('[repositoryFactory] Using InMemoryFurnitureRepository')
-  return new InMemoryFurnitureRepository(furnitureData)
+  try {
+    const supabaseRepo = new SupabaseFurnitureRepository(supabaseUrl, supabaseKey)
+    console.log('[repositoryFactory] Using SupabaseFurnitureRepository (DB-only mode)')
+    return new FallbackFurnitureRepository(supabaseRepo, inMemoryRepo)
+  } catch (error) {
+    if (process.env.NODE_ENV === 'production') {
+      throw error
+    }
+
+    console.warn('[FallbackFurnitureRepository] Supabase failed, using in-memory fallback')
+    return inMemoryRepo
+  }
 }
 
 /**
  * Get or create the furniture repository (singleton pattern)
- * 
- * Returns:
- * - SupabaseFurnitureRepository if USE_SUPABASE_DB=true and credentials are available
- * - InMemoryFurnitureRepository otherwise
+ *
+ * Returns a Supabase-backed repository instance.
  */
 export function getFurnitureRepository(): IFurnitureRepository {
   if (repositoryInstance) return repositoryInstance

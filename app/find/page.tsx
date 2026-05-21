@@ -21,7 +21,6 @@ import type {
 import {
   FURNITURE_TYPES,
   ROOM_OPTIONS,
-  INVENTORY_COUNTS,
   STYLES,
   MATERIAL_AVOIDANCES,
   BRANDS,
@@ -74,7 +73,7 @@ export default function FindPage() {
     usedAllIndiaFallback: boolean
   } | null>(null)
   const [inventoryPreviewLoading, setInventoryPreviewLoading] = useState(false)
-  const [totalItemsCount, setTotalItemsCount] = useState<number>(247)
+  const [totalItemsCount, setTotalItemsCount] = useState<number | null>(null)
   const sectionRefs = useRef<Record<'room' | 'budget' | 'refine' | 'results', HTMLDivElement | null>>({
     room: null,
     budget: null,
@@ -363,19 +362,27 @@ export default function FindPage() {
   }, [setStep, setRoomPhotos, setPhotoPreviews, resetAnalysis, resetRecommendations, setQuestionSubIndex])
 
   // Derived display values
-  const previewTotalMatches = inventoryPreview?.totalMatches ?? (INVENTORY_COUNTS[form.furnitureType] ?? 247)
+  const previewTotalMatches = inventoryPreview?.totalMatches ?? 0
   const previewLocation = inventoryPreview?.usedAllIndiaFallback ? 'All India' : form.city
   const livePillText = form.furnitureType
-    ? `✦ ${inventoryPreviewLoading ? 'Checking...' : previewTotalMatches} ${form.furnitureType}s in ${previewLocation}`
-    : `✦ ${totalItemsCount} items available`
+    ? (inventoryPreviewLoading
+        ? '✦ Checking live inventory...'
+        : inventoryPreview
+          ? `✦ ${previewTotalMatches} ${form.furnitureType}s in ${previewLocation}`
+          : '✦ Live inventory pending')
+    : `✦ ${totalItemsCount ?? '...'} items available`
   const echoLine = form.furnitureType
-    ? `${inventoryPreviewLoading ? 'Checking...' : previewTotalMatches} ${getFurnitureLabel(form.furnitureType)} options · ${previewLocation}`
+    ? (inventoryPreviewLoading
+        ? `Checking live ${getFurnitureLabel(form.furnitureType)} inventory...`
+        : inventoryPreview
+          ? `${previewTotalMatches} ${getFurnitureLabel(form.furnitureType)} options · ${previewLocation}`
+          : `Live ${getFurnitureLabel(form.furnitureType)} inventory pending`)
     : ''
   const selectedContextualCount = Object.keys(form.contextualAnswers).length
   const currentQuestion = contextualQuestions[questionSubIndex]
   const currentQuestionAnswer = currentQuestion ? form.contextualAnswers[currentQuestion.id] : undefined
   const budgetFitEstimate = inventoryPreview?.underBudgetCount
-    ?? Math.max(6, Math.round((INVENTORY_COUNTS[form.furnitureType] ?? 247) * Math.min(1, form.budget / 90000)))
+    ?? Math.max(1, Math.round((totalItemsCount ?? 0) * Math.min(1, form.budget / 90000)))
   const loadingStages = [
     `Checking ${form.city} inventory for ${getFurnitureLabel(form.furnitureType || 'sofa')}`,
     'Scoring for room constraints, delivery, and budget fit',
@@ -400,9 +407,11 @@ export default function FindPage() {
         if (response.ok) {
           const data = await response.json() as { total: number }
           setTotalItemsCount(data.total)
+        } else {
+          setTotalItemsCount(null)
         }
       } catch {
-        setTotalItemsCount(247)
+        setTotalItemsCount(null)
       }
     }
 
@@ -519,6 +528,8 @@ export default function FindPage() {
                   setTimeout(() => {
                     if (questionSubIndex < contextualQuestions.length - 1) {
                       incrementQuestionSubIndex()
+                    } else {
+                      next()
                     }
                   }, 320)
                 }}
