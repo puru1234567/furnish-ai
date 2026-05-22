@@ -1,11 +1,18 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { FindProgressSteps } from './FindProgressSteps'
 import { FURNITURE_TYPES } from '../find-page-constants'
 import { getFurnitureLabel } from '../find-page-utils'
 import { parseFurnitureRequest } from '../parse-intake'
+
+const ROTATING_EXAMPLES = [
+  'Need a compact sofa for around 30k.',
+  'Looking for a durable bed with storage under 40k.',
+  'Need a study table for WFH that does not feel bulky.',
+  'Want a dining table for 4 in a warm wood finish.',
+]
 
 interface FindStepPromptIntakeProps {
   initialBudget: number
@@ -23,6 +30,15 @@ export function FindStepPromptIntake({
   const [errorMessage, setErrorMessage] = useState('')
   const [candidateIds, setCandidateIds] = useState<string[]>([])
   const [selectionMode, setSelectionMode] = useState<'idle' | 'unknown' | 'multi'>('idle')
+  const [exampleIndex, setExampleIndex] = useState(0)
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setExampleIndex(current => (current + 1) % ROTATING_EXAMPLES.length)
+    }, 2400)
+
+    return () => window.clearInterval(intervalId)
+  }, [])
 
   const candidateOptions = useMemo(
     () => FURNITURE_TYPES.filter(item => candidateIds.includes(item.id)),
@@ -78,23 +94,12 @@ export function FindStepPromptIntake({
           Start with one furniture item and a realistic budget. We will use the room and follow-up answers to shape the shortlist after this.
         </p>
 
-        <div className="journey-inline-checks compact-intro-checks intake-card">
-          <div className="journey-inline-check">
-            <strong>Keep it narrow</strong>
-            <span>One item at a time gives a cleaner shortlist.</span>
-          </div>
-          <div className="journey-inline-check">
-            <strong>Example</strong>
-            <span>Need a compact sofa for around 30k.</span>
-          </div>
-        </div>
-
         <div className="text-input-wrap">
           <label htmlFor="intake-request">What furniture are you looking for?</label>
           <textarea
             id="intake-request"
             rows={4}
-            placeholder="e.g. Need a warm modern sofa for my home, nothing bulky"
+            placeholder={`e.g. ${ROTATING_EXAMPLES[exampleIndex]}`}
             value={requestText}
             onChange={event => setRequestText(event.target.value)}
           />

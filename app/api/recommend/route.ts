@@ -96,14 +96,27 @@ export async function POST(req: NextRequest) {
           reranked?: Array<{ id: string; reason?: string }>
         }
 
+        // Validate LLM results against candidate pool
+        const candidateIds = topCandidates.map(item => item.itemId)
+        const validResults = rerankerResult.reranked?.filter(result => {
+          const isValid = candidateIds.includes(result.id)
+          if (!isValid) {
+            console.warn(
+              '[recommend] LLM returned unknown item ID, dropping:',
+              result.id
+            )
+          }
+          return isValid
+        }) ?? []
+
         // Rebuild order from LLM
-        if (rerankerResult.reranked && rerankerResult.reranked.length > 0) {
+        if (validResults.length > 0) {
           const llmOrderMap = new Map(
-            rerankerResult.reranked.map((item, idx) => [item.id, { idx, reason: item.reason }])
+            validResults.map((item, idx) => [item.id, { idx, reason: item.reason }])
           )
 
           // Collect insight from LLM reasoning if available
-          const reasons = rerankerResult.reranked.slice(0, 2).map(r => r.reason).filter(Boolean)
+          const reasons = validResults.slice(0, 2).map(r => r.reason).filter(Boolean)
           contextInsights = reasons as string[]
 
           // Keep top candidate but allow LLM to suggest different order
