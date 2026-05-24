@@ -60,6 +60,7 @@ export class RankingPipeline {
     const primary: ItemScore[] = []
     const stretch: ItemScore[] = []
     const discarded: ItemScore[] = []
+    const MIN_SHORTLIST_COUNT = 4
 
     for (const item of scored) {
       if (item.tier === 'primary') {
@@ -71,12 +72,46 @@ export class RankingPipeline {
       }
     }
 
+    // If thresholds yield a tiny shortlist, promote top discarded candidates
+    // (within stretch cap) so users are not stuck with a single option.
+    const selectedCount = primary.length + stretch.length
+    if (selectedCount > 0 && selectedCount < MIN_SHORTLIST_COUNT) {
+      const needed = MIN_SHORTLIST_COUNT - selectedCount
+      const promoted = discarded
+        .filter(item => item.itemPrice <= stretchCap)
+        .slice(0, needed)
+
+      if (promoted.length > 0) {
+        const promotedIds = new Set(promoted.map(item => item.itemId))
+        const nextDiscarded = discarded.filter(item => !promotedIds.has(item.itemId))
+
+        promoted.forEach(item => {
+          if (item.itemPrice > budget) {
+            item.tier = 'stretch'
+            stretch.push(item)
+          } else {
+            item.tier = 'primary'
+            primary.push(item)
+          }
+        })
+
+        return {
+          scoredItems: scored,
+          primary: primary.slice(0, 10),
+          stretch: stretch.slice(0, 4),
+          discarded: nextDiscarded,
+          totalEvaluated: scored.length,
+          selectedCount: primary.length + stretch.length,
+        }
+      }
+    }
+
     // Fallback: if no item passed the score threshold (e.g. low-context request
     // with no room photo / style selection), promote the top N by raw score
     // rather than returning an empty result set.
     // Respect price vs budget: over-budget items become stretch, rest become primary.
     if (primary.length === 0 && stretch.length === 0 && scored.length > 0) {
-      const top = scored.slice(0, 10)
+      const top = scored.filter(item => item.itemPrice <= stretchCap).slice(0, 10)
       const fallbackPrimary: ItemScore[] = []
       const fallbackStretch: ItemScore[] = []
       top.forEach(item => {

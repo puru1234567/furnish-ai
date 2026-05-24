@@ -230,17 +230,21 @@ export async function getRejectedIds(
 ): Promise<string[]> {
   try {
     const supabase = createClient()
+    const cutoffIso = new Date(Date.now() - 1000 * 60 * 60 * 24 * 45).toISOString()
     const { data, error } = await supabase
       .from('rejection_history')
-      .select('product_id')
+      .select('product_id,rejected_at')
       .eq('user_id', userId)
+      .gte('rejected_at', cutoffIso)
+      .order('rejected_at', { ascending: false })
+      .limit(200)
 
     if (error) {
       console.error('[userDataService] getRejectedIds failed:', error)
       return []
     }
 
-    return (data ?? []).map(row => row.product_id)
+    return [...new Set((data ?? []).map(row => row.product_id))]
   } catch (error) {
     console.error('[userDataService] getRejectedIds failed:', error)
     return []

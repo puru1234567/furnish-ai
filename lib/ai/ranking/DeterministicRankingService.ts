@@ -114,15 +114,25 @@ export class DeterministicRankingService {
   private scoreContextual(item: FurnitureItem, contextualAnswers: Record<string, string> | undefined): number {
     if (!contextualAnswers || Object.keys(contextualAnswers).length === 0) return 0
 
-    const answerText = Object.values(contextualAnswers).join(' ').toLowerCase()
+    // Contextual answers are often stored as option IDs (e.g. "very_compact").
+    // Normalize both question IDs and answer IDs into natural tokens so these
+    // signals actually influence ranking.
+    const answerText = Object.entries(contextualAnswers)
+      .flatMap(([questionId, answerId]) => [questionId, answerId])
+      .join(' ')
+      .replace(/[_-]+/g, ' ')
+      .replace(/[^a-zA-Z0-9\s]/g, ' ')
+      .toLowerCase()
+      .trim()
     const itemText = `${item.name} ${item.material} ${item.tags.join(' ')}`.toLowerCase()
 
-    // Simple keyword matching; in production, use embedding similarity
-    const keywords = answerText.split(/\s+/)
+    // Simple keyword matching with lightweight token cleanup.
+    const stopWords = new Set(['the', 'and', 'for', 'with', 'this', 'that', 'your'])
+    const keywords = [...new Set(answerText.split(/\s+/).filter(kw => kw.length >= 3 && !stopWords.has(kw)))]
     const matches = keywords.filter(kw => itemText.includes(kw)).length
 
-    if (matches > 3) return 15
-    if (matches > 1) return 10
+    if (matches >= 4) return 15
+    if (matches >= 2) return 10
     if (matches > 0) return 5
     return 0
   }

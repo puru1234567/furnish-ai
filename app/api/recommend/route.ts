@@ -58,7 +58,8 @@ export async function POST(req: NextRequest) {
     // ─ Step 2: Deterministic scoring ──────────────────────────────────────
     const budget = ctx.budget
     const budgetMax = ctx.budgetMax ?? Math.round(budget * 1.4)
-    const stretchCap = Math.min(budgetMax, Math.round(budget * 1.15))
+    // Respect the user's selected flexibility ceiling from the intake flow.
+    const stretchCap = Math.max(budget, budgetMax)
 
     const rankingResult = rankingPipeline.rank(
       eligible,
