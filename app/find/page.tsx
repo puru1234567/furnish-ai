@@ -5,6 +5,13 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { isAuthEnabled } from '@/lib/config/auth-config'
 import { saveStoredResults } from '@/lib/utils/saved-results'
+import {
+  createSearchSession,
+  getRejectedIds,
+  saveRoomAnalysis,
+  savePassiveSignals,
+  updateSessionResultCount,
+} from '@/lib/services/userDataService'
 import { FindStepRoomDetails } from './components/FindStepRoomDetails'
 import { FindStepPromptIntake } from './components/FindStepPromptIntake'
 import { ResultsDisplay } from './components/ResultsDisplay'
@@ -46,6 +53,7 @@ import {
   useRoomAnalysisFlow,
   usePageNavigation,
   useFurnitureRecommendation,
+  usePassiveContext,
   useLoadingAnimation,
   useKeyboardNavigation,
 } from './hooks'
@@ -54,12 +62,21 @@ export default function FindPage() {
   // Form state
   const router = useRouter()
   const authEnabled = isAuthEnabled()
+  const microSessionId = useRef(crypto.randomUUID()).current
+  const supabase = createClient()
+  const [userId, setUserId] = useState<string | null>(null)
+  const [sessionId, setSessionId] = useState<string | null>(null)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUserId(data.user?.id ?? null)
+    })
+  }, [])
 
   // Auth guard — middleware handles most cases; this covers client-side navigation
   useEffect(() => {
     if (!authEnabled) return
 
-    const supabase = createClient()
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) router.replace('/?auth=login&next=/find')
     })
@@ -82,7 +99,10 @@ export default function FindPage() {
   })
 
   // Micro-response toasts
-  const { microResponse, showMicroResponse } = useMicroResponse()
+  const { microResponse, showMicroResponse } = useMicroResponse(microSessionId)
+
+  // Passive context for non-blocking persistence
+  const passiveCtx = usePassiveContext()
 
   // Image compression utilities
   const { compressImageFile, compressImageFileForApi } = useImageCompression()
@@ -293,9 +313,46 @@ export default function FindPage() {
 
     setStep(99)
     try {
+      let currentSessionId: string | null = sessionId
+      if (userId) {
+        const newSessionId = await createSearchSession(userId, {
+          furniture_category: form.furnitureType,
+          room_type: form.roomType,
+          budget_min: form.budget,
+          budget_max: form.budgetMax,
+          budget_flexibility: form.budgetFlexibility,
+          city: form.city,
+          must_have_features: form.mustHaveFeatures ?? [],
+          avoided_materials: form.materialsToAvoid ?? [],
+          style_preference: form.aestheticStyle ?? '',
+          who_uses: [],
+          additional_notes: form.additionalNotes,
+        })
+
+        if (newSessionId) {
+          setSessionId(newSessionId)
+          currentSessionId = newSessionId
+
+          if (passiveCtx) {
+            const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? ''
+            void savePassiveSignals(userId, newSessionId, {
+              device_type: passiveCtx.device,
+              time_of_day: passiveCtx.timeLabel,
+              referrer_source: passiveCtx.refSource,
+              is_return_visitor: passiveCtx.isReturn,
+              city_from_timezone: timezone,
+            })
+          }
+        }
+      }
+
       const roomSqftFromAnalysis = roomAnalysis?.estimatedWidthFt && roomAnalysis?.estimatedDepthFt
         ? roomAnalysis.estimatedWidthFt * roomAnalysis.estimatedDepthFt
         : form.roomWidth * form.roomDepth
+
+      const rejectedIds = userId
+        ? await getRejectedIds(userId)
+        : []
 
       const ctx: UserContext = {
         roomType: form.roomType as RoomType,
@@ -310,7 +367,8 @@ export default function FindPage() {
         painPoint: form.painPoint,
         stylePreference: [] as StyleTag[],
         useCase: [],
-        alreadyRejected: '',
+        alreadyRejected: rejectedIds.join(', '),
+        alreadyRejectedIds: rejectedIds,
         additionalNotes: form.additionalNotes.trim() || undefined,
         roomContext: roomAnalysis
           ? {
@@ -326,7 +384,10 @@ export default function FindPage() {
         rankingPriority: 'quality' as RankingPriority,
       }
 
-      const data = await getRecommendations(ctx)
+      const data = await getRecommendations(ctx, userId)
+      if (currentSessionId && data?.items?.length) {
+        void updateSessionResultCount(currentSessionId, data.items.length)
+      }
       try {
         saveStoredResults({
           results: data?.items ?? [],
@@ -335,6 +396,7 @@ export default function FindPage() {
             archetypeLabel: data?.archetypeLabel ?? '',
             contextInsights: data?.contextInsights ?? [],
             flaggedIssues: data?.flaggedIssues ?? [],
+            exclusionSummary: data?.exclusionSummary,
           },
           form,
           roomAnalysis,
@@ -347,7 +409,30 @@ export default function FindPage() {
       console.error('[submit]', e)
       setStep(101)
     }
-  }, [form, roomAnalysis, getRecommendations, setStep])
+  }, [form, roomAnalysis, getRecommendations, setStep, sessionId, userId, passiveCtx])
+
+  useEffect(() => {
+    if (!userId || !sessionId || !roomAnalysis) return
+
+    const widthCm = roomAnalysis.estimatedWidthFt != null
+      ? Math.round(roomAnalysis.estimatedWidthFt * 30.48)
+      : undefined
+    const depthCm = roomAnalysis.estimatedDepthFt != null
+      ? Math.round(roomAnalysis.estimatedDepthFt * 30.48)
+      : undefined
+
+    void saveRoomAnalysis(userId, sessionId, {
+      wall_color: roomAnalysis.wallColor?.label,
+      floor_type: roomAnalysis.floorType?.label,
+      room_style: roomAnalysis.styleProfile?.id,
+      room_density: roomAnalysis.spatialConstraints?.[0],
+      natural_light: roomAnalysis.lighting,
+      layout_type: roomAnalysis.roomLayout,
+      width_cm: widthCm,
+      depth_cm: depthCm,
+      raw_analysis: roomAnalysis as unknown as Record<string, unknown>,
+    })
+  }, [userId, sessionId, roomAnalysis])
 
   // Global reset
   const reset = useCallback(() => {

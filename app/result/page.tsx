@@ -16,6 +16,8 @@ import { fmt, getFurnitureLabel } from '../find/find-page-utils'
 export default function ResultPage() {
   const router = useRouter()
   const authEnabled = isAuthEnabled()
+  const [userId, setUserId] = useState<string | null>(null)
+  const sessionId: string | null = null
   const [data, setData] = useState<StoredResults | null>(null)
   const [hydrated, setHydrated] = useState(false)
 
@@ -25,6 +27,7 @@ export default function ResultPage() {
 
     const supabase = createClient()
     supabase.auth.getUser().then(({ data: { user } }) => {
+      setUserId(user?.id ?? null)
       if (!user) router.replace('/?auth=login&next=/result')
     })
   }, [authEnabled, router])
@@ -110,6 +113,8 @@ export default function ResultPage() {
         meta={data.meta}
         form={data.form ?? DEFAULTS}
         roomAnalysis={data.roomAnalysis}
+        userId={userId}
+        sessionId={sessionId}
         priceFilter={priceFilter}
         compareMode={compareMode}
         compareItems={compareItems}

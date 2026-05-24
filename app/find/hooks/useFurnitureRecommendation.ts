@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import type { RecommendedItem, RecommendationResponse, UserContext } from '@/lib/types'
 import { sortRecommendations, type SortOption } from '@/lib/utils/sort-items'
+import { getRejectedIds } from '@/lib/services/userDataService'
 
 interface RecommendationMeta {
   summary: string
@@ -27,15 +28,23 @@ export function useFurnitureRecommendation() {
   const [priceFilter, setPriceFilter] = useState(45000)
   const [sortBy, setSortBy] = useState<SortOption>('relevance')
 
-  const getRecommendations = useCallback(async (ctx: UserContext) => {
+  const getRecommendations = useCallback(async (ctx: UserContext, userId: string | null) => {
     setLoading(true)
     setError('')
 
     try {
+      const rejectedIds = userId
+        ? await getRejectedIds(userId)
+        : []
+
       const res = await fetch('/api/recommend', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(ctx),
+        body: JSON.stringify({
+          ...ctx,
+          alreadyRejected: rejectedIds.join(', '),
+          alreadyRejectedIds: rejectedIds,
+        }),
       })
 
       if (!res.ok) {

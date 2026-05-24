@@ -63,6 +63,8 @@ export type PainPointType =
   | 'too_bulky'
   | 'assembly_nightmare'
 
+export type ExclusionReason = { itemId: string; reason: string }
+
 export type UniversalNeedKey = 'durability' | 'space' | 'materials_avoid'
 
 export type FurnitureSpecificNeed = 
@@ -129,9 +131,13 @@ export interface UserContext {
 
   // What they already looked at and rejected (optional but gold)
   alreadyRejected: string  // e.g. "IKEA too modern, Pepperfry too expensive"
+  alreadyRejectedIds?: string[]  // Item IDs the user dismissed this session (persisted in sessionStorage)
 
   // Free-form user notes from the final step (soft preference signal, not a hard filter)
   additionalNotes?: string
+
+  // Room dimensions in cm (optional — supplied when room analysis provides them)
+  roomWidthCm?: number
 
   // Room-aware context from vision analysis
   roomContext?: RoomContextSnapshot
@@ -162,6 +168,18 @@ export interface RecommendedItem extends FurnitureItem {
   stretchJustification: string | null
 }
 
+export interface ExclusionSummary {
+  total: number
+  byReason: {
+    budget: number
+    city: number
+    outOfStock: number
+    material: number
+    mustHave: number
+    size: number
+  }
+}
+
 export interface RecommendationResponse {
   summary: string
   archetypeLabel: string
@@ -169,4 +187,31 @@ export interface RecommendationResponse {
   visionSummary: string | null
   items: RecommendedItem[]
   flaggedIssues: string[]
+  exclusionSummary?: ExclusionSummary
+}
+
+// ── User data persistence types ───────────────────────────────────
+export interface SavedResult {
+  id: string
+  user_id: string
+  session_id: string
+  product_id: string
+  product_name: string
+  product_price: number
+  product_brand: string
+  why_it_fits: string
+  product_url?: string | null
+  saved_at: string
+}
+
+export interface UserPreferences {
+  id: string
+  user_id: string
+  preferred_city?: string | null
+  typical_budget_min?: number | null
+  typical_budget_max?: number | null
+  preferred_styles?: string[] | null
+  preferred_categories?: string[] | null
+  avoided_materials?: string[] | null
+  updated_at?: string | null
 }

@@ -34,7 +34,13 @@ export async function POST(req: NextRequest) {
     const allItems = await repository.findAll()
     logger.debug('repository', `Loaded ${allItems.length} items from repository`)
 
-    const { items: eligible, relaxedFlags, painContext } = filterAndRankItems(allItems, ctx)
+    // Filter out user-rejected items before scoring — never score items the user dismissed
+    const rejectedIds = Array.isArray(ctx.alreadyRejectedIds) ? ctx.alreadyRejectedIds : []
+    const itemsForScoring = rejectedIds.length > 0
+      ? allItems.filter(item => !rejectedIds.includes(item.id))
+      : allItems
+
+    const { items: eligible, relaxedFlags, painContext, exclusions } = filterAndRankItems(itemsForScoring, ctx)
     logger.debug('filtering', `After hard filters: ${eligible.length} eligible items`, { relaxedFlags })
 
     if (eligible.length === 0) {
@@ -180,6 +186,17 @@ export async function POST(req: NextRequest) {
       visionSummary: null,
       items: recommended,
       flaggedIssues: relaxedFlags,
+      exclusionSummary: exclusions.length > 0 ? {
+        total: exclusions.length,
+        byReason: {
+          budget:     exclusions.filter(e => e.reason.includes('over your')).length,
+          city:       exclusions.filter(e => e.reason.startsWith('Not available in')).length,
+          outOfStock: exclusions.filter(e => e.reason === 'Currently out of stock').length,
+          material:   exclusions.filter(e => e.reason.includes('you asked to avoid')).length,
+          mustHave:   exclusions.filter(e => e.reason.includes('must-have')).length,
+          size:       exclusions.filter(e => e.reason.includes('too wide for your wall')).length,
+        },
+      } : undefined,
     })
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Recommendation failed'

@@ -5,7 +5,7 @@ const STORAGE_KEY = 'furnish_ai_results'
 
 export interface StoredResults {
   results: RecommendedItem[]
-  meta: Pick<RecommendationResponse, 'summary' | 'archetypeLabel' | 'contextInsights' | 'flaggedIssues'>
+  meta: Pick<RecommendationResponse, 'summary' | 'archetypeLabel' | 'contextInsights' | 'flaggedIssues' | 'exclusionSummary'>
   form: FormData
   roomAnalysis: RoomAnalysis | null
 }

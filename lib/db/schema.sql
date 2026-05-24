@@ -79,6 +79,15 @@ CREATE TABLE IF NOT EXISTS product_cache (
   CONSTRAINT cache_expiry CHECK (expires_at > cached_at)
 );
 
+-- Analytics: lightweight event stream for passive context and micro-responses
+CREATE TABLE IF NOT EXISTS session_events (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  session_id text NOT NULL,
+  event_type text NOT NULL,
+  payload jsonb,
+  created_at timestamptz DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_product_cache_expires ON product_cache(expires_at);
 
 -- Audit log for data changes (optional, for compliance/debugging)
@@ -94,3 +103,144 @@ CREATE TABLE IF NOT EXISTS product_audit_log (
 
 CREATE INDEX IF NOT EXISTS idx_audit_log_product_id ON product_audit_log(product_id);
 CREATE INDEX IF NOT EXISTS idx_audit_log_changed_at ON product_audit_log(changed_at);
+
+-- User preferences (budget habits, city, categories searched)
+CREATE TABLE IF NOT EXISTS user_preferences (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL UNIQUE,
+  preferred_city text,
+  typical_budget_min integer,
+  typical_budget_max integer,
+  preferred_styles text[] DEFAULT ARRAY[]::text[],
+  preferred_categories text[] DEFAULT ARRAY[]::text[],
+  avoided_materials text[] DEFAULT ARRAY[]::text[],
+  updated_at timestamptz DEFAULT now()
+);
+
+-- Each search/find session
+CREATE TABLE IF NOT EXISTS search_sessions (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  furniture_category text,
+  room_type text,
+  budget_min integer,
+  budget_max integer,
+  budget_flexibility text,
+  city text,
+  must_have_features text[] DEFAULT ARRAY[]::text[],
+  avoided_materials text[] DEFAULT ARRAY[]::text[],
+  style_preference text,
+  who_uses text[] DEFAULT ARRAY[]::text[],
+  additional_notes text,
+  result_count integer DEFAULT 0,
+  created_at timestamptz DEFAULT now()
+);
+
+-- Room analyses tied to sessions
+CREATE TABLE IF NOT EXISTS room_analyses (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  session_id uuid REFERENCES search_sessions(id) ON DELETE CASCADE,
+  wall_color text,
+  floor_type text,
+  room_style text,
+  room_density text,
+  natural_light text,
+  layout_type text,
+  width_cm integer,
+  depth_cm integer,
+  raw_analysis jsonb,
+  created_at timestamptz DEFAULT now()
+);
+
+-- Saved/hearted results
+CREATE TABLE IF NOT EXISTS saved_results (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  session_id uuid REFERENCES search_sessions(id) ON DELETE SET NULL,
+  product_id text NOT NULL,
+  product_name text,
+  product_price integer,
+  product_brand text,
+  why_it_fits text,
+  product_url text,
+  saved_at timestamptz DEFAULT now(),
+  UNIQUE(user_id, product_id)
+);
+
+-- Rejection history
+CREATE TABLE IF NOT EXISTS rejection_history (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  session_id uuid REFERENCES search_sessions(id) ON DELETE SET NULL,
+  product_id text NOT NULL,
+  rejection_reason text,
+  rejected_at timestamptz DEFAULT now(),
+  UNIQUE(user_id, product_id)
+);
+
+-- Passive signals per session
+CREATE TABLE IF NOT EXISTS passive_signals (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  session_id uuid REFERENCES search_sessions(id) ON DELETE CASCADE,
+  device_type text,
+  time_of_day text,
+  referrer_source text,
+  is_return_visitor boolean DEFAULT false,
+  city_from_timezone text,
+  created_at timestamptz DEFAULT now()
+);
+
+-- Product click tracking
+CREATE TABLE IF NOT EXISTS product_clicks (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  session_id uuid REFERENCES search_sessions(id) ON DELETE SET NULL,
+  product_id text NOT NULL,
+  product_name text,
+  rank_position integer,
+  price integer,
+  clicked_at timestamptz DEFAULT now()
+);
+
+-- RLS: users can only see their own data
+ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE search_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE room_analyses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE saved_results ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rejection_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE passive_signals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_clicks ENABLE ROW LEVEL SECURITY;
+
+-- RLS policies
+CREATE POLICY "users own preferences" ON user_preferences
+  FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "users own sessions" ON search_sessions
+  FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "users own room analyses" ON room_analyses
+  FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "users own saved results" ON saved_results
+  FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "users own rejections" ON rejection_history
+  FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "users own passive signals" ON passive_signals
+  FOR ALL USING (auth.uid() = user_id);
+
+CREATE POLICY "users own clicks" ON product_clicks
+  FOR ALL USING (auth.uid() = user_id);
+
+-- Indexes for query performance
+CREATE INDEX IF NOT EXISTS idx_saved_results_user 
+  ON saved_results(user_id);
+CREATE INDEX IF NOT EXISTS idx_rejection_history_user 
+  ON rejection_history(user_id);
+CREATE INDEX IF NOT EXISTS idx_search_sessions_user 
+  ON search_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_product_clicks_user 
+  ON product_clicks(user_id);

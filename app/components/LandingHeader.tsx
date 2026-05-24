@@ -43,20 +43,21 @@ export function LandingHeader({
     ? (() => {
         const items: MenuItem[] = [
           { href: '/find', label: 'Start matching', index: '01', cta: true },
+          { href: '/saved', label: 'Saved', index: '02' },
         ]
 
         if (hasSavedResults) {
-          items.push({ href: '/result', label: 'Saved results', index: '02' })
+          items.push({ href: '/result', label: 'Saved results', index: '03' })
         }
 
-        items.push({ href: '/account', label: 'Account', index: hasSavedResults ? '03' : '02' })
+        items.push({ href: '/account', label: 'Account', index: hasSavedResults ? '04' : '03' })
 
         if (role === 'vendor' || role === 'admin') {
-          items.push({ href: '/vendor', label: 'Vendor studio', index: hasSavedResults ? '04' : '03' })
+          items.push({ href: '/vendor', label: 'Vendor studio', index: hasSavedResults ? '05' : '04' })
         }
 
         if (role === 'admin') {
-          items.push({ href: '/admin', label: 'Admin console', index: hasSavedResults ? '05' : '04' })
+          items.push({ href: '/admin', label: 'Admin console', index: hasSavedResults ? '06' : '05' })
         }
 
         return items

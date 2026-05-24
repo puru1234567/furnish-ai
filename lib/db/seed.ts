@@ -9,7 +9,8 @@ import path from 'path'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 config({ path: path.resolve(__dirname, '../../.env.local') })
 
-import { furnitureData } from '@/lib/furniture-data'
+import type { FurnitureItem } from '@/lib/types'
+import { getFurnitureRepository } from '@/lib/repositories'
 
 /**
  * Build a searchable text blob from a furniture item
@@ -17,7 +18,7 @@ import { furnitureData } from '@/lib/furniture-data'
  * 
  * Combines: name, description, tags, style, material, brand, warranty, maintenance ease
  */
-function buildSearchBlob(item: typeof furnitureData[0]): string {
+function buildSearchBlob(item: FurnitureItem): string {
   const parts = [
     item.name,
     item.description,
@@ -40,7 +41,7 @@ function buildSearchBlob(item: typeof furnitureData[0]): string {
 /**
  * Transform FurnitureItem to database row format
  */
-function itemToRow(item: typeof furnitureData[0]) {
+function itemToRow(item: FurnitureItem) {
   return {
     id: item.id,
     name: item.name,
@@ -85,11 +86,12 @@ async function seed() {
     process.exit(1)
   }
 
-  console.log(`[seed] Loading ${furnitureData.length} products into Supabase...`)
+  const items = await getFurnitureRepository().findAll()
+  console.log(`[seed] Loading ${items.length} products into Supabase...`)
 
   try {
     // Transform data
-    const rows = furnitureData.map(itemToRow)
+    const rows = items.map(itemToRow)
 
     // Insert via Supabase REST API
     const response = await fetch(`${supabaseUrl}/rest/v1/products`, {

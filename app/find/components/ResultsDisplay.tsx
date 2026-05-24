@@ -1,19 +1,30 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import type { FormData } from '../find-page-model'
-import type { RecommendedItem, RecommendationResponse, RoomAnalysis } from '@/lib/types'
+import type { RecommendedItem, RecommendationResponse, RoomAnalysis, ExclusionSummary } from '@/lib/types'
 import type { SortOption } from '@/lib/utils/sort-items'
 import { SORT_OPTIONS } from '@/lib/utils/sort-items'
 import { fmt } from '../find-page-utils'
 import { ComparisonView } from './ComparisonView'
 import { CITIES } from '../find-page-constants'
+import {
+  saveResult,
+  unsaveResult,
+  getSavedResults,
+  rejectItem,
+  getRejectedIds,
+  upsertPreferences,
+  trackProductClick,
+} from '@/lib/services/userDataService'
 
 interface ResultsDisplayProps {
   results: RecommendedItem[]
-  meta: Pick<RecommendationResponse, 'summary' | 'archetypeLabel' | 'contextInsights' | 'flaggedIssues'>
+  meta: Pick<RecommendationResponse, 'summary' | 'archetypeLabel' | 'contextInsights' | 'flaggedIssues' | 'exclusionSummary'>
   form: FormData
   roomAnalysis: RoomAnalysis | null
+  userId: string | null
+  sessionId: string | null
   priceFilter: number
   compareMode: boolean
   compareItems: string[]
@@ -30,6 +41,8 @@ export function ResultsDisplay({
   meta,
   form,
   roomAnalysis,
+  userId,
+  sessionId,
   priceFilter,
   compareMode,
   compareItems,
@@ -43,9 +56,80 @@ export function ResultsDisplay({
   const [showCompareView, setShowCompareView] = useState(false)
   const [sortOpen, setSortOpen] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
-  const [wishlistItems, setWishlistItems] = useState<string[]>([])
+  const [savedIds, setSavedIds] = useState<string[]>([])
   const [usefulnessRating, setUsefulnessRating] = useState<'yes' | 'partial' | 'no' | null>(null)
   const [feedbackReason, setFeedbackReason] = useState<string | null>(null)
+  const [exclusionOpen, setExclusionOpen] = useState(false)
+
+  // ── Rejection state ───────────────────────────────────────────────
+  const [rejectedIds, setRejectedIds] = useState<string[]>([])
+  const [dismissing, setDismissing] = useState<Set<string>>(new Set())
+
+  // Load saved results from Supabase
+  useEffect(() => {
+    if (!userId) return
+    getSavedResults(userId).then(results => {
+      setSavedIds(results.map(r => r.product_id))
+    })
+  }, [userId])
+
+  // Load rejection history from Supabase
+  useEffect(() => {
+    if (!userId) return
+    getRejectedIds(userId).then(ids => {
+      setRejectedIds(ids)
+    })
+  }, [userId])
+
+  const handleSave = useCallback((item: RecommendedItem) => {
+    if (!userId) return
+
+    const alreadySaved = savedIds.includes(item.id)
+    if (alreadySaved) {
+      setSavedIds(prev => prev.filter(id => id !== item.id))
+      void unsaveResult(userId, item.id)
+      return
+    }
+
+    setSavedIds(prev => [...prev, item.id])
+    void saveResult(userId, sessionId ?? '', {
+      product_id: item.id,
+      product_name: item.name,
+      product_price: item.price,
+      product_brand: item.brand,
+      why_it_fits: item.whyItFits ?? '',
+      product_url: item.productUrl ?? '',
+    })
+
+    void upsertPreferences(userId, {
+      preferred_city: form.city,
+      typical_budget_max: form.budget,
+      preferred_categories: form.furnitureType ? [form.furnitureType] : undefined,
+    })
+  }, [userId, savedIds, sessionId, form.city, form.budget, form.furnitureType])
+
+  const handleReject = useCallback((item: RecommendedItem) => {
+    setDismissing(prev => new Set([...prev, item.id]))
+    setRejectedIds(prev => prev.includes(item.id) ? prev : [...prev, item.id])
+    setTimeout(() => {
+      setDismissing(prev => { const next = new Set(prev); next.delete(item.id); return next })
+    }, 200)
+
+    if (userId) {
+      void rejectItem(
+        userId,
+        sessionId ?? '',
+        item.id,
+        'user_dismissed'
+      )
+    }
+  }, [userId, sessionId])
+
+  const handleShowAllAgain = useCallback(() => {
+    setRejectedIds([])
+    setDismissing(new Set())
+  }, [])
+
   const quickAdjustments = [
     'Too expensive - show cheaper',
     'Not modern enough',
@@ -54,10 +138,12 @@ export function ResultsDisplay({
   ]
 
   const selectedContextualCount = Object.keys(form.contextualAnswers).length
-  const primaryResults = results.filter(item => item.tier !== 'stretch')
-  const fallbackPrimaryPool = primaryResults.length > 0 ? primaryResults : results
+  // Exclude rejected items — dismissing items stay visible until animation completes
+  const activeResults = results.filter(item => !rejectedIds.includes(item.id))
+  const primaryResults = activeResults.filter(item => item.tier !== 'stretch')
+  const fallbackPrimaryPool = primaryResults.length > 0 ? primaryResults : activeResults
   const visiblePrimaryResults = fallbackPrimaryPool
-  const visibleStretchResults = results
+  const visibleStretchResults = activeResults
     .filter(item => item.tier === 'stretch' && !visiblePrimaryResults.some(primary => primary.id === item.id))
   const gridColumnCount = 3
   const occupiedSlotsInLastRow = visiblePrimaryResults.length % gridColumnCount
@@ -68,7 +154,7 @@ export function ResultsDisplay({
   const hasStretchResults = results.some(item => item.tier === 'stretch')
   const compareItemObjects = results.filter(r => compareItems.includes(r.id))
   const activeSortLabel = SORT_OPTIONS.find(o => o.value === sortBy)?.label ?? 'Best Match'
-  const wishlistCount = wishlistItems.length
+  const wishlistCount = savedIds.length
   const storySignals = [
     form.roomType,
     fmt(form.budget),
@@ -76,12 +162,6 @@ export function ResultsDisplay({
     selectedContextualCount > 0 ? `${selectedContextualCount} answer signals` : undefined,
   ].filter(Boolean) as string[]
   const leadingInsight = meta.contextInsights[0] ?? meta.flaggedIssues[0] ?? null
-  const contextualSignal = Object.values(form.contextualAnswers).find(Boolean)
-    ?? form.mustHaveFeatures[0]
-    ?? form.painPoint[0]?.replace(/_/g, ' ')
-    ?? form.additionalNotes
-    ?? null
-  const spatialSignal = roomAnalysis?.spatialConstraints?.[0] ?? null
 
   const cleanSignal = useCallback((value: string) => {
     const normalized = value
@@ -100,7 +180,6 @@ export function ResultsDisplay({
       const premiumSentence = item.durabilityScore >= 8
         ? 'Higher build quality than core picks.'
         : `Upgraded ${baseMaterial.toLowerCase()} construction.`
-
       return `${premiumSentence} Material: ${baseMaterial}. ${item.warrantyYears}-year warranty. ${durabilitySentence}`
     }
 
@@ -120,7 +199,6 @@ export function ResultsDisplay({
       .replace(/\s+/g, ' ')
       .trim()
     const materialLabel = baseMaterial ? `✓ ${baseMaterial}` : '✓ Material'
-
     return [
       truncatePill(materialLabel),
       truncatePill(`${item.warrantyYears}yr warranty`),
@@ -137,10 +215,6 @@ export function ResultsDisplay({
     compareItems.forEach(id => onCompareToggle(id))
     setShowCompareView(false)
   }, [compareItems, onCompareToggle])
-
-  const toggleWishlist = useCallback((id: string) => {
-    setWishlistItems(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
-  }, [])
 
   const handleSaveResults = useCallback(() => {
     const data = { results, meta, form, roomAnalysis, savedAt: new Date() }
@@ -183,6 +257,13 @@ export function ResultsDisplay({
     })
   }, [form])
 
+  const dismissStyle = (id: string): React.CSSProperties => ({
+    transition: 'opacity 200ms ease, transform 200ms ease',
+    opacity: dismissing.has(id) ? 0 : 1,
+    transform: dismissing.has(id) ? 'scale(0.97)' : undefined,
+    pointerEvents: dismissing.has(id) ? 'none' : undefined,
+  })
+
   const renderResultCard = (
     item: RecommendedItem,
     index: number,
@@ -190,7 +271,7 @@ export function ResultsDisplay({
     options?: { compactStretch?: boolean; gridSpan?: number }
   ) => {
     const isCompared = compareItems.includes(item.id)
-    const isWishlisted = wishlistItems.includes(item.id)
+    const isWishlisted = savedIds.includes(item.id)
     const priceDelta = item.price - form.budget
     const whyCopy = buildWhyCopy(item, variant)
     const attributePills = buildPills(item)
@@ -199,13 +280,18 @@ export function ResultsDisplay({
 
     if (variant === 'stretch') {
       if (!compactStretch) {
+        // Promoted stretch — full grid card
         return (
           <article
             key={item.id}
             className={`result-card stretch-card promoted-stretch-card ${isCompared ? 'in-compare' : ''} ${isWishlisted ? 'in-wishlist' : ''}`}
-            style={gridSpan > 1 ? { gridColumn: `span ${gridSpan}` } : undefined}
+            style={{
+              ...(gridSpan > 1 ? { gridColumn: `span ${gridSpan}` } : {}),
+              ...dismissStyle(item.id),
+            }}
           >
             <div className="rank-badge stretch-badge">↑ Stretch Pick</div>
+            <button type="button" className="card-reject-btn" aria-label="Remove this item" onClick={() => { void handleReject(item) }}>✕</button>
             <div className="card-actions">
               <button
                 type="button"
@@ -218,7 +304,7 @@ export function ResultsDisplay({
               <button
                 type="button"
                 className="card-wishlist-btn"
-                onClick={() => toggleWishlist(item.id)}
+                onClick={() => { void handleSave(item) }}
                 title={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
               >
                 {isWishlisted ? '❤️' : '🤍'}
@@ -238,7 +324,7 @@ export function ResultsDisplay({
               </div>
               <div className="card-divider" />
               <div className="card-why stretch-callout">
-                <div className="why-label stretch-callout-label">Why it's worth it</div>
+                <div className="why-label stretch-callout-label">Why it&apos;s worth it</div>
                 {whyCopy}
               </div>
               <div className="card-chip-row">
@@ -252,6 +338,14 @@ export function ResultsDisplay({
                   type="button"
                   className="card-cta"
                   onClick={() => {
+                    if (userId) {
+                      void trackProductClick(userId, sessionId ?? '', {
+                        product_id: item.id,
+                        product_name: item.name,
+                        rank_position: index + 1,
+                        price: item.price,
+                      })
+                    }
                     console.log({
                       event: 'product_click',
                       item_id: item.id,
@@ -271,9 +365,15 @@ export function ResultsDisplay({
         )
       }
 
+      // Compact stretch card
       return (
-        <article key={item.id} className={`result-card stretch-card stretch-card-compact ${isCompared ? 'in-compare' : ''} ${isWishlisted ? 'in-wishlist' : ''}`}>
+        <article
+          key={item.id}
+          className={`result-card stretch-card stretch-card-compact ${isCompared ? 'in-compare' : ''} ${isWishlisted ? 'in-wishlist' : ''}`}
+          style={dismissStyle(item.id)}
+        >
           <div className="rank-badge stretch-badge">↑ Stretch Pick</div>
+          <button type="button" className="card-reject-btn" aria-label="Remove this item" onClick={() => { void handleReject(item) }}>✕</button>
           <div className="card-actions">
             <button
               type="button"
@@ -286,7 +386,7 @@ export function ResultsDisplay({
             <button
               type="button"
               className="card-wishlist-btn"
-              onClick={() => toggleWishlist(item.id)}
+              onClick={() => { void handleSave(item) }}
               title={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
             >
               {isWishlisted ? '❤️' : '🤍'}
@@ -306,7 +406,7 @@ export function ResultsDisplay({
             </div>
             <div className="card-divider" />
             <div className="card-why stretch-callout compact">
-              <div className="why-label stretch-callout-label">Why it's worth it</div>
+              <div className="why-label stretch-callout-label">Why it&apos;s worth it</div>
               {whyCopy}
             </div>
             <div className="stretch-card-meta">
@@ -320,6 +420,14 @@ export function ResultsDisplay({
                 type="button"
                 className="card-cta"
                 onClick={() => {
+                  if (userId) {
+                    void trackProductClick(userId, sessionId ?? '', {
+                      product_id: item.id,
+                      product_name: item.name,
+                      rank_position: index + 1,
+                      price: item.price,
+                    })
+                  }
                   console.log({
                     event: 'product_click',
                     item_id: item.id,
@@ -339,11 +447,17 @@ export function ResultsDisplay({
       )
     }
 
+    // Primary card
     return (
-      <article key={item.id} className={`result-card ${index === 0 ? 'rank-1' : ''} ${isCompared ? 'in-compare' : ''} ${isWishlisted ? 'in-wishlist' : ''}`}>
+      <article
+        key={item.id}
+        className={`result-card ${index === 0 ? 'rank-1' : ''} ${isCompared ? 'in-compare' : ''} ${isWishlisted ? 'in-wishlist' : ''}`}
+        style={dismissStyle(item.id)}
+      >
         <div className={`rank-badge ${index === 0 ? 'rank-badge--hero' : 'rank-badge--outlined'}`}>
           {index === 0 ? '✦ Best Match' : `✦ #${index + 1}`}
         </div>
+        <button type="button" className="card-reject-btn" aria-label="Remove this item" onClick={() => { void handleReject(item) }}>✕</button>
         <div className="card-actions">
           <button
             type="button"
@@ -356,7 +470,7 @@ export function ResultsDisplay({
           <button
             type="button"
             className="card-wishlist-btn"
-            onClick={() => toggleWishlist(item.id)}
+            onClick={() => { void handleSave(item) }}
             title={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
           >
             {isWishlisted ? '❤️' : '🤍'}
@@ -387,6 +501,14 @@ export function ResultsDisplay({
               type="button"
               className="card-cta"
               onClick={() => {
+                if (userId) {
+                  void trackProductClick(userId, sessionId ?? '', {
+                    product_id: item.id,
+                    product_name: item.name,
+                    rank_position: index + 1,
+                    price: item.price,
+                  })
+                }
                 console.log({
                   event: 'product_click',
                   item_id: item.id,
@@ -408,6 +530,87 @@ export function ResultsDisplay({
 
   return (
     <>
+      <style>{`
+        .card-reject-btn {
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          z-index: 10;
+          background: rgba(0,0,0,0.55);
+          color: #fff;
+          border: none;
+          border-radius: 50%;
+          width: 26px;
+          height: 26px;
+          font-size: 13px;
+          line-height: 1;
+          cursor: pointer;
+          opacity: 0;
+          transition: opacity 150ms ease;
+        }
+        .result-card {
+          position: relative;
+        }
+        .result-card:hover .card-reject-btn {
+          opacity: 1;
+        }
+        .rejection-notice {
+          font-size: 13px;
+          color: #888;
+          margin: 8px 0 16px;
+        }
+        .rejection-show-all {
+          background: none;
+          border: none;
+          color: var(--accent, #5a4fcf);
+          cursor: pointer;
+          font-size: 13px;
+          text-decoration: underline;
+          padding: 0;
+        }
+        .exclusion-panel {
+          margin: 0 0 16px;
+          border: 1px solid rgba(0,0,0,0.08);
+          border-radius: 8px;
+          background: rgba(0,0,0,0.02);
+          overflow: hidden;
+        }
+        .exclusion-panel-toggle {
+          width: 100%;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 10px 14px;
+          background: none;
+          border: none;
+          cursor: pointer;
+          text-align: left;
+          gap: 8px;
+        }
+        .exclusion-panel-count {
+          font-size: 12px;
+          color: #888;
+          font-weight: 500;
+        }
+        .exclusion-panel-chevron {
+          font-size: 10px;
+          color: #aaa;
+          flex-shrink: 0;
+        }
+        .exclusion-panel-list {
+          list-style: none;
+          margin: 0;
+          padding: 0 14px 10px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .exclusion-panel-list li {
+          font-size: 12px;
+          color: #999;
+          padding: 2px 0;
+        }
+      `}</style>
       <div className="results-wrapper results-shell">
         <aside className={`results-sidebar ${mobileSidebarOpen ? 'mobile-open' : ''}`}>
           <div className="sidebar-shell">
@@ -528,7 +731,42 @@ export function ResultsDisplay({
               <button type="button" className="compare-mode-exit" onClick={onCompareModeToggle}>Exit</button>
             </div>
           )}
-
+          {/* Exclusion summary panel */}
+          {meta.exclusionSummary && meta.exclusionSummary.total > 0 && (
+            <div className="exclusion-panel">
+              <button
+                type="button"
+                className="exclusion-panel-toggle"
+                onClick={() => setExclusionOpen(o => !o)}
+                aria-expanded={exclusionOpen}
+              >
+                <span className="exclusion-panel-count">{meta.exclusionSummary.total} items were filtered out for you</span>
+                <span className="exclusion-panel-chevron">{exclusionOpen ? '▴' : '▾'}</span>
+              </button>
+              {exclusionOpen && (
+                <ul className="exclusion-panel-list">
+                  {meta.exclusionSummary.byReason.budget > 0 && (
+                    <li>{meta.exclusionSummary.byReason.budget} item{meta.exclusionSummary.byReason.budget !== 1 ? 's' : ''}: over your budget</li>
+                  )}
+                  {meta.exclusionSummary.byReason.city > 0 && (
+                    <li>{meta.exclusionSummary.byReason.city} item{meta.exclusionSummary.byReason.city !== 1 ? 's' : ''}: not available in your city</li>
+                  )}
+                  {meta.exclusionSummary.byReason.outOfStock > 0 && (
+                    <li>{meta.exclusionSummary.byReason.outOfStock} item{meta.exclusionSummary.byReason.outOfStock !== 1 ? 's' : ''}: currently out of stock</li>
+                  )}
+                  {meta.exclusionSummary.byReason.material > 0 && (
+                    <li>{meta.exclusionSummary.byReason.material} item{meta.exclusionSummary.byReason.material !== 1 ? 's' : ''}: material you asked to avoid</li>
+                  )}
+                  {meta.exclusionSummary.byReason.mustHave > 0 && (
+                    <li>{meta.exclusionSummary.byReason.mustHave} item{meta.exclusionSummary.byReason.mustHave !== 1 ? 's' : ''}: missing a feature you need</li>
+                  )}
+                  {meta.exclusionSummary.byReason.size > 0 && (
+                    <li>{meta.exclusionSummary.byReason.size} item{meta.exclusionSummary.byReason.size !== 1 ? 's' : ''}: too wide for your wall</li>
+                  )}
+                </ul>
+              )}
+            </div>
+          )}
           <div className="results-grid">
             {visiblePrimaryResults.map((item, idx) => renderResultCard(item, idx, 'primary'))}
             {stretchPromotedToGrid.map((item, idx) =>
@@ -556,6 +794,13 @@ export function ResultsDisplay({
                 )}
               </div>
             </section>
+          )}
+
+          {rejectedIds.length > 0 && (
+            <div className="rejection-notice">
+              Showing results without {rejectedIds.length} item(s) you removed.{' '}
+              <button type="button" className="rejection-show-all" onClick={handleShowAllAgain}>Show all again</button>
+            </div>
           )}
 
           <div className="results-usefulness-panel">
@@ -606,7 +851,7 @@ export function ResultsDisplay({
                     className="reason-chip"
                     onClick={() => handleFeedbackReason("Doesn't match my room")}
                   >
-                    Doesn't match my room
+                    Doesn&apos;t match my room
                   </button>
                   <button
                     type="button"
