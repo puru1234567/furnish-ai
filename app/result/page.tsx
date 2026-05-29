@@ -127,7 +127,6 @@ export default function ResultPage() {
       },
       form: nextForm,
       roomAnalysis,
-      savedAt: new Date(),
     }
 
     setData(nextData)
