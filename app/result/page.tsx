@@ -1,14 +1,22 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { isAuthEnabled } from '@/lib/config/auth-config'
-import type { RecommendedItem, RecommendationResponse, RoomAnalysis } from '@/lib/types'
+import type {
+  PurchaseTrigger,
+  RankingPriority,
+  RecommendationResponse,
+  RoomType,
+  StyleTag,
+  Urgency,
+  UserContext,
+} from '@/lib/types'
 import type { SortOption } from '@/lib/utils/sort-items'
 import type { FormData } from '../find/find-page-model'
-import { readStoredResults, type StoredResults } from '@/lib/utils/saved-results'
+import { readStoredResults, saveStoredResults, type StoredResults } from '@/lib/utils/saved-results'
 import { ResultsDisplay } from '../find/components/ResultsDisplay'
 import { DEFAULTS } from '../find/find-page-constants'
 import { fmt, getFurnitureLabel } from '../find/find-page-utils'
@@ -33,7 +41,7 @@ export default function ResultPage() {
   }, [authEnabled, router])
 
   // Local UI state — owned by this page, not the find flow
-  const [priceFilter, setPriceFilter] = useState(100000)
+  const [priceFilter, setPriceFilter] = useState(0)
   const [compareMode, setCompareMode] = useState(false)
   const [compareItems, setCompareItems] = useState<string[]>([])
   const [sortBy, setSortBy] = useState<SortOption>('relevance')
@@ -43,8 +51,6 @@ export default function ResultPage() {
       const parsed = readStoredResults()
       if (parsed) {
         setData(parsed)
-        // Seed price filter from the budget stored in form
-        setPriceFilter(Math.round((parsed.form?.budgetMax ?? parsed.form?.budget ?? 100000) * 1.3))
       }
     } catch {
       // bad JSON — fall through to empty state
@@ -54,6 +60,107 @@ export default function ResultPage() {
 
   const toggleCompare = (id: string) =>
     setCompareItems(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+
+  const refreshRecommendations = useCallback(async (overrides: { budgetMax?: number; city?: string }) => {
+    if (!data) return
+
+    const form = data.form ?? DEFAULTS
+    const nextForm: FormData = {
+      ...form,
+      budgetMax: overrides.budgetMax ?? form.budgetMax,
+      city: overrides.city ?? form.city,
+    }
+
+    const roomAnalysis = data.roomAnalysis
+    const roomSqftFromAnalysis = roomAnalysis?.estimatedWidthFt && roomAnalysis?.estimatedDepthFt
+      ? roomAnalysis.estimatedWidthFt * roomAnalysis.estimatedDepthFt
+      : form.roomWidth * form.roomDepth
+
+    const requestContext: UserContext = {
+      roomType: nextForm.roomType as RoomType,
+      roomSqft: roomSqftFromAnalysis,
+      city: nextForm.city,
+      deliveryOk: true,
+      furnitureType: nextForm.furnitureType,
+      budget: nextForm.budget,
+      budgetMax: nextForm.budgetMax,
+      purchaseTrigger: 'new_home' as PurchaseTrigger,
+      existingFurnitureDesc: roomAnalysis?.existingFurniture.join(', ') ?? '',
+      painPoint: nextForm.painPoint,
+      stylePreference: [] as StyleTag[],
+      useCase: [],
+      alreadyRejected: '',
+      alreadyRejectedIds: [],
+      additionalNotes: nextForm.additionalNotes.trim() || undefined,
+      roomContext: roomAnalysis
+        ? {
+            summary: roomAnalysis.roomSummary,
+            furnitureNeeds: roomAnalysis.furnitureNeeds,
+            spatialConstraints: roomAnalysis.spatialConstraints,
+            existingFurniture: roomAnalysis.existingFurniture,
+            lighting: roomAnalysis.lighting,
+          }
+        : undefined,
+      contextualAnswers: Object.keys(nextForm.contextualAnswers).length > 0 ? nextForm.contextualAnswers : undefined,
+      urgency: 'next_month' as Urgency,
+      rankingPriority: 'quality' as RankingPriority,
+    }
+
+    const response = await fetch('/api/recommend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestContext),
+    })
+
+    if (!response.ok) return
+    const refreshed = await response.json() as RecommendationResponse
+
+    const nextData: StoredResults = {
+      results: refreshed.items ?? [],
+      meta: {
+        summary: refreshed.summary ?? '',
+        archetypeLabel: refreshed.archetypeLabel ?? '',
+        contextInsights: refreshed.contextInsights ?? [],
+        flaggedIssues: refreshed.flaggedIssues ?? [],
+        exclusionSummary: refreshed.exclusionSummary,
+        pipelineDebug: refreshed.pipelineDebug,
+      },
+      form: nextForm,
+      roomAnalysis,
+      savedAt: new Date(),
+    }
+
+    setData(nextData)
+    saveStoredResults(nextData)
+  }, [data])
+
+  const applyPriceCap = useCallback(async (nextCap: number) => {
+    setData(current => {
+      if (!current) return current
+      return {
+        ...current,
+        form: {
+          ...current.form,
+          budgetMax: nextCap,
+        },
+      }
+    })
+    await refreshRecommendations({ budgetMax: nextCap })
+  }, [refreshRecommendations])
+
+  const handleCityChange = useCallback(async (city: string) => {
+    setData(current => {
+      if (!current) return current
+      return {
+        ...current,
+        form: {
+          ...current.form,
+          city,
+        },
+      }
+    })
+    await refreshRecommendations({ city })
+  }, [refreshRecommendations])
 
   if (!hydrated) return null
 
@@ -120,11 +227,10 @@ export default function ResultPage() {
         compareItems={compareItems}
         sortBy={sortBy}
         onPriceFilterChange={setPriceFilter}
+        onApplyPriceCap={applyPriceCap}
         onCompareToggle={toggleCompare}
         onCompareModeToggle={() => setCompareMode(p => !p)}
-        onCityChange={city =>
-          setData(d => d ? { ...d, form: { ...d.form, city } } : d)
-        }
+        onCityChange={handleCityChange}
         onSortChange={setSortBy}
       />
     </>

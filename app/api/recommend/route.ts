@@ -5,6 +5,7 @@ import { filterAndRankItems } from '@/lib/ai/item-filter'
 import { rankingPipeline } from '@/lib/ai/ranking'
 import { getFurnitureRepository } from '@/lib/repositories'
 import { ApiLogger } from '@/lib/ai/logger'
+import { createClient } from '@/lib/supabase/server'
 
 /**
  * Recommendation endpoint
@@ -20,7 +21,14 @@ import { ApiLogger } from '@/lib/ai/logger'
  */
 export async function POST(req: NextRequest) {
   const logger = new ApiLogger('POST /api/recommend')
-  
+
+  // Attach user ID for per-user prod log files (non-blocking)
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    logger.setUserId(user?.id ?? null)
+  } catch { /* auth resolution must not break the request */ }
+
   try {
     const ctx: UserContext = await req.json()
     logger.info('start', 'Recommendation request received', {
@@ -180,6 +188,21 @@ export async function POST(req: NextRequest) {
       stretch: recommended.filter(r => r.tier === 'stretch').length,
     })
 
+    const pipelineDebug = {
+      totalInRepository: allItems.length,
+      afterRejectionPrune: itemsForScoring.length,
+      rejectedPruned: rejectedIds.length,
+      afterHardFilters: eligible.length,
+      scored: rankingResult.totalEvaluated,
+      primary: rankingResult.primary.length,
+      stretch: rankingResult.stretch.length,
+      discarded: rankingResult.discarded.length,
+      budget: budget,
+      budgetMax: budgetMax,
+      stretchCap: stretchCap,
+      relaxedFlags,
+    }
+
     return NextResponse.json({
       summary: `Found ${recommended.length} ${ctx.furnitureType || 'furniture'} items in ${ctx.city} ranked by fit.`,
       archetypeLabel,
@@ -187,6 +210,7 @@ export async function POST(req: NextRequest) {
       visionSummary: null,
       items: recommended,
       flaggedIssues: relaxedFlags,
+      pipelineDebug,
       exclusionSummary: exclusions.length > 0 ? {
         total: exclusions.length,
         byReason: {

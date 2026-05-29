@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import type { RoomAnalysis, ContextualQuestion } from '@/lib/types'
 import type { PhotoSlotId } from '../find-page-model'
 
@@ -12,12 +12,17 @@ interface RoomAnalysisFlowProps {
  * Orchestrates room photo analysis and contextual question generation
  */
 export function useRoomAnalysisFlow(props: RoomAnalysisFlowProps) {
+  const latestRoomPhotosRef = useRef(props.roomPhotos)
   const [roomAnalysis, setRoomAnalysis] = useState<RoomAnalysis | null>(null)
   const [analysisLoading, setAnalysisLoading] = useState(false)
   const [analysisError, setAnalysisError] = useState('')
   const [contextualQuestions, setContextualQuestions] = useState<ContextualQuestion[]>([])
   const [questionsLoading, setQuestionsLoading] = useState(false)
   const [questionsError, setQuestionsError] = useState('')
+
+  useEffect(() => {
+    latestRoomPhotosRef.current = props.roomPhotos
+  }, [props.roomPhotos])
 
   const generateContextualQuestions = useCallback(
     async (analysis: RoomAnalysis | null, furnitureType: string, roomType: string) => {
@@ -72,6 +77,21 @@ export function useRoomAnalysisFlow(props: RoomAnalysisFlowProps) {
 
       try {
         // Collect and compress all room photos for API (with retry logic)
+        const fileToDataUrl = (file: File): Promise<string> =>
+          new Promise((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => {
+              const result = reader.result
+              if (typeof result === 'string' && result.startsWith('data:image/')) {
+                resolve(result)
+                return
+              }
+              reject(new Error('Failed to convert image to data URL'))
+            }
+            reader.onerror = () => reject(new Error('Failed to read image file'))
+            reader.readAsDataURL(file)
+          })
+
         const compressWithRetry = async (file: File, attempt = 1): Promise<string | null> => {
           try {
             return await props.compressImageFileForApi(file)
@@ -81,19 +101,30 @@ export function useRoomAnalysisFlow(props: RoomAnalysisFlowProps) {
               await new Promise(resolve => setTimeout(resolve, 300))
               return compressWithRetry(file, attempt + 1)
             }
-            console.error(`[room-analysis] Failed to compress image after retries:`, error)
-            return null // Return null on failure, will be filtered out
+            console.warn('[room-analysis] Compression failed after retries, using original image payload')
+            try {
+              return await fileToDataUrl(file)
+            } catch (fallbackError) {
+              console.error('[room-analysis] Failed to prepare image payload:', fallbackError)
+              return null
+            }
           }
         }
 
+        const roomPhotoFiles = Object.values(latestRoomPhotosRef.current).filter((file): file is File => file !== null)
+
         const apiImages = await Promise.all(
-          Object.values(props.roomPhotos)
-            .filter(Boolean)
-            .map(file => (file ? compressWithRetry(file) : null))
+          roomPhotoFiles.map(file => compressWithRetry(file))
         ).then(images => images.filter(Boolean) as string[])
 
         if (apiImages.length === 0) {
           throw new Error('No images could be processed. Please try uploading your photos again.')
+        }
+
+        if (roomPhotoFiles.length > 0 && apiImages.length < roomPhotoFiles.length) {
+          console.warn(
+            `[room-analysis] Sending ${apiImages.length}/${roomPhotoFiles.length} images due to processing failures`
+          )
         }
 
         const res = await fetch('/api/analyze-room', {

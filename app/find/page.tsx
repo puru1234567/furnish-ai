@@ -66,6 +66,9 @@ export default function FindPage() {
   const supabase = createClient()
   const [userId, setUserId] = useState<string | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
+  // Prevents double-firing analysis when all photos are ready (Strict Mode runs
+  // state updaters twice in dev, so we must not call side-effects inside them).
+  const analysisTriggeredRef = useRef(false)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -268,14 +271,7 @@ export default function FindPage() {
     
     void compressWithRetry(file)
       .then(dataUrl => {
-        setPhotoPreviews(prev => {
-          const next = { ...prev, [slot]: dataUrl }
-          const allFilled = Object.values(next).every(v => v !== null)
-          if (allFilled) {
-            void triggerRoomAnalysis(form.furnitureType, form.roomType)
-          }
-          return next
-        })
+        setPhotoPreviews(prev => ({ ...prev, [slot]: dataUrl }))
       })
       .catch(error => {
         console.error('[photo-compression] Failed after retries:', error)
@@ -287,7 +283,21 @@ export default function FindPage() {
           'info'
         )
       })
-  }, [compressImageFile, photoCount, roomPhotos, setRoomPhotos, setPhotoPreviews, triggerRoomAnalysis, form.furnitureType, form.roomType, showMicroResponse])
+  }, [compressImageFile, photoCount, roomPhotos, setRoomPhotos, setPhotoPreviews, showMicroResponse])
+
+  // Trigger room analysis exactly once when all 4 photo previews are ready.
+  // Kept outside the state updater to avoid React Strict Mode double-invocation.
+  useEffect(() => {
+    const allFilled = Object.values(photoPreviews).every(v => v !== null)
+    if (!allFilled) {
+      // Reset guard whenever the photo set changes (e.g. user replaces a photo)
+      analysisTriggeredRef.current = false
+      return
+    }
+    if (analysisTriggeredRef.current) return
+    analysisTriggeredRef.current = true
+    void triggerRoomAnalysis(form.furnitureType, form.roomType)
+  }, [photoPreviews, form.furnitureType, form.roomType, triggerRoomAnalysis])
 
   const handleSlotDrop = useCallback((e: React.DragEvent, slot: PhotoSlotId) => {
     e.preventDefault()

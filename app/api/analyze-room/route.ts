@@ -2,10 +2,18 @@
 import { analyzeRoomWithVision } from './roomVision'
 import { preprocessRoomImages } from '@/lib/ai/image-processing'
 import { ApiLogger } from '@/lib/ai/logger'
+import { createClient } from '@/lib/supabase/server'
 
 export async function POST(req: NextRequest) {
   const logger = new ApiLogger('POST /api/analyze-room')
-  
+
+  // Attach user ID for per-user prod log files (non-blocking)
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    logger.setUserId(user?.id ?? null)
+  } catch { /* auth resolution must not break the request */ }
+
   try {
     logger.info('start', 'Room analysis request received')
     const body = await req.json() as { images: string[]; furnitureType?: string; roomType?: string }

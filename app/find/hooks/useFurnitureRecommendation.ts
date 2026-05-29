@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import type { RecommendedItem, RecommendationResponse, UserContext } from '@/lib/types'
+import type { RecommendedItem, RecommendationResponse, UserContext, PipelineDebug } from '@/lib/types'
 import { sortRecommendations, type SortOption } from '@/lib/utils/sort-items'
 import { getRejectedIds } from '@/lib/services/userDataService'
 
@@ -8,6 +8,8 @@ interface RecommendationMeta {
   archetypeLabel: string
   contextInsights: string[]
   flaggedIssues: string[]
+  pipelineDebug?: PipelineDebug
+  exclusionSummary?: RecommendationResponse['exclusionSummary']
 }
 
 /**
@@ -20,12 +22,14 @@ export function useFurnitureRecommendation() {
     archetypeLabel: '',
     contextInsights: [],
     flaggedIssues: [],
+    pipelineDebug: undefined,
+    exclusionSummary: undefined,
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [compareMode, setCompareMode] = useState(false)
   const [compareItems, setCompareItems] = useState<string[]>([])
-  const [priceFilter, setPriceFilter] = useState(45000)
+  const [priceFilter, setPriceFilter] = useState(0)
   const [sortBy, setSortBy] = useState<SortOption>('relevance')
 
   const getRecommendations = useCallback(async (ctx: UserContext, userId: string | null) => {
@@ -59,6 +63,8 @@ export function useFurnitureRecommendation() {
         archetypeLabel: data.archetypeLabel ?? '',
         contextInsights: data.contextInsights ?? [],
         flaggedIssues: data.flaggedIssues ?? [],
+        pipelineDebug: data.pipelineDebug,
+        exclusionSummary: data.exclusionSummary,
       })
       return data
     } catch (e: unknown) {
@@ -82,7 +88,7 @@ export function useFurnitureRecommendation() {
 
   const resetRecommendations = useCallback(() => {
     setResults([])
-    setMeta({ summary: '', archetypeLabel: '', contextInsights: [], flaggedIssues: [] })
+    setMeta({ summary: '', archetypeLabel: '', contextInsights: [], flaggedIssues: [], pipelineDebug: undefined, exclusionSummary: undefined })
     setError('')
     setCompareItems([])
     setCompareMode(false)

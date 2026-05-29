@@ -204,7 +204,6 @@ CREATE TABLE IF NOT EXISTS product_clicks (
   clicked_at timestamptz DEFAULT now()
 );
 
--- RLS: users can only see their own data
 ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
 ALTER TABLE search_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE room_analyses ENABLE ROW LEVEL SECURITY;
@@ -212,8 +211,8 @@ ALTER TABLE saved_results ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rejection_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE passive_signals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE product_clicks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE session_events ENABLE ROW LEVEL SECURITY;
 
--- RLS policies
 CREATE POLICY "users own preferences" ON user_preferences
   FOR ALL USING (auth.uid() = user_id);
 
@@ -234,6 +233,11 @@ CREATE POLICY "users own passive signals" ON passive_signals
 
 CREATE POLICY "users own clicks" ON product_clicks
   FOR ALL USING (auth.uid() = user_id);
+
+-- Tracking events are write-only analytics rows.
+-- Allow inserts from anon/authenticated clients and service-role.
+CREATE POLICY "allow session event inserts" ON session_events
+  FOR INSERT WITH CHECK (true);
 
 -- Indexes for query performance
 CREATE INDEX IF NOT EXISTS idx_saved_results_user 

@@ -1,11 +1,12 @@
 ﻿import { NextRequest, NextResponse } from 'next/server'
 import type { ContextualQuestion, RoomAnalysis } from '@/lib/types'
-import { QUESTIONS_SYSTEM_PROMPT } from '@/lib/ai/prompts/questions-prompt'
+import { QUESTIONS_SYSTEM_PROMPT, buildQuestionUserMessage } from '@/lib/ai/prompts/questions-prompt'
 import { getFallbackQuestions } from '@/lib/ai/prompts/question-fallbacks'
 import { callGroqChat } from '@/lib/ai/groq-client'
 import { validateGenerateQuestionsRequest } from '@/lib/api/validation'
 import { createErrorResponse, createSuccessResponse } from '@/lib/api/middleware'
 import { ApiLogger } from '@/lib/ai/logger'
+import { createClient } from '@/lib/supabase/server'
 
 interface QuestionRequestBody {
   furnitureType?: string
@@ -20,28 +21,16 @@ async function generateWithGroq(body: QuestionRequestBody, logger: ApiLogger): P
     return getFallbackQuestions(body.furnitureType ?? 'sofa', body.roomAnalysis ?? undefined)
   }
 
-  const userPrompt = `${QUESTIONS_SYSTEM_PROMPT}
-
-INPUT:
-furnitureType=${body.furnitureType ?? 'unspecified'}
-roomType=${body.roomType ?? 'unspecified'}
-roomSummary=${body.roomAnalysis?.roomSummary ?? 'not available'}
-furnitureNeeds=${(body.roomAnalysis?.furnitureNeeds ?? []).join(',')}
-existingFurniture=${(body.roomAnalysis?.existingFurniture ?? []).join(',')}
-spatialConstraints=${(body.roomAnalysis?.spatialConstraints ?? []).join(',')}
-lighting=${body.roomAnalysis?.lighting ?? 'unknown'}
-layout=${body.roomAnalysis?.roomLayout ?? 'unknown'}
-
-Return 3 or 4 contextual questions.`
+  const userPrompt = buildQuestionUserMessage(body)
 
   try {
     const raw = await callGroqChat({
       model: 'llama-3.3-70b-versatile',
       messages: [
-        { role: 'system', content: 'Return only valid JSON.' },
+        { role: 'system', content: QUESTIONS_SYSTEM_PROMPT },
         { role: 'user', content: userPrompt },
       ],
-      temperature: 0.2,
+      temperature: 0.5,
       maxTokens: 1024,
       jsonMode: true,
     })
@@ -58,11 +47,25 @@ Return 3 or 4 contextual questions.`
 
 export async function POST(req: NextRequest) {
   const logger = new ApiLogger('POST /api/generate-questions')
-  
+
+  // Attach user ID for per-user prod log files (non-blocking)
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    logger.setUserId(user?.id ?? null)
+  } catch { /* auth resolution must not break the request */ }
+
   try {
     const body = await req.json()
     
-    logger.debug('validation', 'Validating request', { furnitureType: body.furnitureType })
+    logger.debug('validation', 'Validating request', {
+      furnitureType: body.furnitureType,
+      roomType: body.roomType,
+      hasRoomAnalysis: body.roomAnalysis != null,
+      roomSummaryLength: body.roomAnalysis?.roomSummary?.length ?? 0,
+      furnitureNeedsCount: body.roomAnalysis?.furnitureNeeds?.length ?? 0,
+      spatialConstraints: body.roomAnalysis?.spatialConstraints ?? [],
+    })
 
     // Validate request
     if (!validateGenerateQuestionsRequest(body)) {

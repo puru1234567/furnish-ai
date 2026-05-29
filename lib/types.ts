@@ -180,6 +180,21 @@ export interface ExclusionSummary {
   }
 }
 
+export interface PipelineDebug {
+  totalInRepository: number
+  afterRejectionPrune: number
+  rejectedPruned: number
+  afterHardFilters: number
+  scored: number
+  primary: number
+  stretch: number
+  discarded: number
+  budget: number
+  budgetMax: number
+  stretchCap: number
+  relaxedFlags: string[]
+}
+
 export interface RecommendationResponse {
   summary: string
   archetypeLabel: string
@@ -188,6 +203,7 @@ export interface RecommendationResponse {
   items: RecommendedItem[]
   flaggedIssues: string[]
   exclusionSummary?: ExclusionSummary
+  pipelineDebug?: PipelineDebug
 }
 
 // ── User data persistence types ───────────────────────────────────
