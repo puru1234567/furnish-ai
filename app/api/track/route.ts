@@ -8,6 +8,11 @@ import { createClient } from '@/lib/supabase/server'
 
 const OK = () => NextResponse.json({ ok: true }, { status: 200 })
 
+function toErrorPreview(raw: string): string {
+  const compact = raw.replace(/\s+/g, ' ').trim()
+  return compact.length > 220 ? `${compact.slice(0, 220)}...` : compact
+}
+
 function createTrackingClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -47,7 +52,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (error) {
       // Tracking is best-effort; avoid noisy logs for expected RLS misses.
       if (error.code !== '42501') {
-        console.error('[track] insert error:', error.message)
+        console.error('[track] insert error:', toErrorPreview(error.message))
       }
     }
   } catch (err) {

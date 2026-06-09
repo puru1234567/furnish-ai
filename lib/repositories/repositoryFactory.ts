@@ -76,16 +76,26 @@ class FallbackFurnitureRepository implements IFurnitureRepository {
  * - SUPABASE_SERVICE_ROLE_KEY (preferred) or NEXT_PUBLIC_SUPABASE_ANON_KEY
  */
 function createRepositoryInstance(): IFurnitureRepository {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseKey =
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
+  const supabaseKey = (
     process.env.SUPABASE_SERVICE_ROLE_KEY ??
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
-    process.env.SUPABASE_ANON_KEY
+    process.env.SUPABASE_ANON_KEY ??
+    ''
+  ).trim()
   const inMemoryRepo = new InMemoryFurnitureRepository(furnitureData)
 
   if (!supabaseUrl || !supabaseKey) {
     throw new Error(
       '[repositoryFactory] Supabase credentials missing. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or NEXT_PUBLIC_SUPABASE_ANON_KEY).'
+    )
+  }
+
+  try {
+    new URL(supabaseUrl)
+  } catch {
+    throw new Error(
+      `[repositoryFactory] Invalid NEXT_PUBLIC_SUPABASE_URL: "${supabaseUrl}". Expected a full URL like https://<project-ref>.supabase.co`
     )
   }
 

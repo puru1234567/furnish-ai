@@ -49,6 +49,12 @@ export class SupabaseFurnitureRepository implements IFurnitureRepository {
   private supabaseUrl: string
   private supabaseAnonKey: string
 
+  private formatErrorPreview(raw: string): string {
+    // Prevent massive HTML pages (e.g., Cloudflare 5xx) from flooding logs.
+    const compact = raw.replace(/\s+/g, ' ').trim()
+    return compact.length > 220 ? `${compact.slice(0, 220)}...` : compact
+  }
+
   constructor(supabaseUrl: string, supabaseAnonKey: string) {
     if (!supabaseUrl || !supabaseAnonKey) {
       throw new Error('SupabaseFurnitureRepository requires NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY')
@@ -111,7 +117,10 @@ export class SupabaseFurnitureRepository implements IFurnitureRepository {
 
       if (!response.ok) {
         const errorBody = await response.text()
-        console.error(`[SupabaseFurnitureRepository] query failed:`, response.status, errorBody)
+        console.error('[SupabaseFurnitureRepository] query failed', {
+          status: response.status,
+          error: this.formatErrorPreview(errorBody),
+        })
         return []
       }
 
@@ -137,7 +146,10 @@ export class SupabaseFurnitureRepository implements IFurnitureRepository {
 
       if (!response.ok) {
         const errorBody = await response.text()
-        console.error(`[SupabaseFurnitureRepository] findById failed:`, response.status, errorBody)
+        console.error('[SupabaseFurnitureRepository] findById failed', {
+          status: response.status,
+          error: this.formatErrorPreview(errorBody),
+        })
         return null
       }
 
@@ -163,7 +175,10 @@ export class SupabaseFurnitureRepository implements IFurnitureRepository {
 
       if (!response.ok) {
         const errorBody = await response.text()
-        console.error(`[SupabaseFurnitureRepository] findByCategory failed:`, response.status, errorBody)
+        console.error('[SupabaseFurnitureRepository] findByCategory failed', {
+          status: response.status,
+          error: this.formatErrorPreview(errorBody),
+        })
         return []
       }
 
@@ -198,7 +213,10 @@ export class SupabaseFurnitureRepository implements IFurnitureRepository {
 
       if (!response.ok) {
         const errorBody = await response.text()
-        console.error(`[SupabaseFurnitureRepository] findByCriteria failed:`, response.status, errorBody)
+        console.error('[SupabaseFurnitureRepository] findByCriteria failed', {
+          status: response.status,
+          error: this.formatErrorPreview(errorBody),
+        })
         return []
       }
 
@@ -214,28 +232,38 @@ export class SupabaseFurnitureRepository implements IFurnitureRepository {
   }
 
   async findAll(): Promise<FurnitureItem[]> {
+    // Fetch all products with pagination: offset=0, limit=1000 (Supabase default max)
+    const endpoint = `${this.supabaseUrl}/rest/v1/products?limit=1000&offset=0`
+
+    let response: Response
     try {
-      // Fetch all products with pagination: offset=0, limit=1000 (Supabase default max)
-      const response = await fetch(`${this.supabaseUrl}/rest/v1/products?limit=1000&offset=0`, {
+      response = await fetch(endpoint, {
         headers: {
           apikey: this.supabaseAnonKey,
           Authorization: `Bearer ${this.supabaseAnonKey}`,
         },
       })
-
-      if (!response.ok) {
-        const errorBody = await response.text()
-        console.error(`[SupabaseFurnitureRepository] findAll failed:`, response.status, errorBody)
-        return []
-      }
-
-      const rows: SupabaseRow[] = await response.json()
-      console.debug(`[SupabaseFurnitureRepository] findAll returned ${rows.length} items`)
-      return rows.map(row => this.rowToItem(row))
     } catch (error) {
-      console.error(`[SupabaseFurnitureRepository] findAll threw:`, error)
-      return []
+      console.error('[SupabaseFurnitureRepository] findAll network failure', {
+        endpoint,
+        cause: error,
+      })
+      throw new Error('[SupabaseFurnitureRepository] findAll network failure. Check NEXT_PUBLIC_SUPABASE_URL and DNS reachability.')
     }
+
+    if (!response.ok) {
+      const errorBody = await response.text()
+      console.error('[SupabaseFurnitureRepository] findAll failed', {
+        endpoint,
+        status: response.status,
+        error: this.formatErrorPreview(errorBody),
+      })
+      throw new Error(`[SupabaseFurnitureRepository] findAll failed with status ${response.status}`)
+    }
+
+    const rows: SupabaseRow[] = await response.json()
+    console.debug(`[SupabaseFurnitureRepository] findAll returned ${rows.length} items`)
+    return rows.map(row => this.rowToItem(row))
   }
 
   async count(filter?: FurnitureFilter): Promise<number> {
@@ -261,7 +289,10 @@ export class SupabaseFurnitureRepository implements IFurnitureRepository {
 
       if (!response.ok) {
         const errorBody = await response.text()
-        console.error(`[SupabaseFurnitureRepository] findByIds failed:`, response.status, errorBody)
+        console.error('[SupabaseFurnitureRepository] findByIds failed', {
+          status: response.status,
+          error: this.formatErrorPreview(errorBody),
+        })
         return []
       }
 
@@ -287,7 +318,10 @@ export class SupabaseFurnitureRepository implements IFurnitureRepository {
 
       if (!response.ok) {
         const errorBody = await response.text()
-        console.error(`[SupabaseFurnitureRepository] getDistinctValues failed:`, response.status, errorBody)
+        console.error('[SupabaseFurnitureRepository] getDistinctValues failed', {
+          status: response.status,
+          error: this.formatErrorPreview(errorBody),
+        })
         return []
       }
 
