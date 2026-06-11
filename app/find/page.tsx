@@ -788,7 +788,7 @@ export default function FindPage() {
       )}
 
       {/* ═════════════════════════════════
-          ERROR STATE (step 101)
+          ERROR STATEs (step 101)
           ═════════════════════════════════ */}
       {step === 101 && (
         <div style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', paddingTop: '100px', paddingBottom: '100px', background: 'var(--cream)' }}>
