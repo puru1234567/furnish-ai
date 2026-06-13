@@ -29,7 +29,13 @@ export function LandingHero({
         <p className="hero-sub">Upload your space, answer a few focused questions, and get furniture recommendations that feel considered, calm, and actually right for the room.</p>
 
         <div className="hero-cta">
-          <button type="button" className="primary" onClick={onStartRoomRead}>Start your room read</button>
+          <button
+            type="button"
+            className="primary"
+            onClick={onStartRoomRead}
+          >
+            Start your room read
+          </button>
           <a href="#how" className="secondary">See the journey</a>
         </div>
 

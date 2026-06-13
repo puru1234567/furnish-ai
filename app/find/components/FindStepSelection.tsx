@@ -41,7 +41,7 @@ export function FindStepSelection({
       <FindProgressSteps currentStep={1} livePillText={livePillText} />
 
       <div className="form-body">
-        <div className="form-eyebrow">Step 1 of 5</div>
+        <div className="form-eyebrow">Step 1 of 4</div>
         <h2 className="form-title">What are you looking for?</h2>
 
         {(microResponse || form.furnitureType || form.roomType) && (
@@ -59,36 +59,42 @@ export function FindStepSelection({
           </div>
         )}
 
-        <div className="section-label">Furniture type</div>
-        <div className="chip-grid">
-          {furnitureTypes.map(furnitureType => (
-            <button
-              key={furnitureType.id}
-              onClick={() => onSelectFurniture(furnitureType.id)}
-              className={`chip ${form.furnitureType === furnitureType.id ? 'selected' : ''}`}
-            >
-              <span className="chip-icon">{furnitureType.icon}</span>
-              <span className="chip-label">{furnitureType.label}</span>
-              <span className="chip-sub">{furnitureType.desc}</span>
-            </button>
-          ))}
-        </div>
+        <section className="find-section-group">
+          <div className="find-group-helper">Choose one furniture category to keep recommendations focused.</div>
+          <div className="section-label">Furniture type</div>
+          <div className="chip-grid">
+            {furnitureTypes.map(furnitureType => (
+              <button
+                key={furnitureType.id}
+                onClick={() => onSelectFurniture(furnitureType.id)}
+                className={`chip ${form.furnitureType === furnitureType.id ? 'selected' : ''}`}
+              >
+                <span className="chip-icon">{furnitureType.icon}</span>
+                <span className="chip-label">{furnitureType.label}</span>
+                <span className="chip-sub">{furnitureType.desc}</span>
+              </button>
+            ))}
+          </div>
+        </section>
 
         {form.furnitureType && (
           <div className="room-section-reveal">
             <div className="divider"></div>
-            <div className="section-label">Room it will go in</div>
-            <div className="toggle-grid">
-              {roomOptions.map(room => (
-                <button
-                  key={room}
-                  className={`toggle-chip ${form.roomType === room ? 'selected' : ''}`}
-                  onClick={() => onSelectRoom(room)}
-                >
-                  {room}
-                </button>
-              ))}
-            </div>
+            <section className="find-section-group find-section-group--compact">
+              <div className="find-group-helper">Tell us where this item lives so constraints stay realistic.</div>
+              <div className="section-label">Room it will go in</div>
+              <div className="toggle-grid">
+                {roomOptions.map(room => (
+                  <button
+                    key={room}
+                    className={`toggle-chip ${form.roomType === room ? 'selected' : ''}`}
+                    onClick={() => onSelectRoom(room)}
+                  >
+                    {room}
+                  </button>
+                ))}
+              </div>
+            </section>
           </div>
         )}
 

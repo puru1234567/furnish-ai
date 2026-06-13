@@ -191,27 +191,30 @@ export function FindStepRoomDetails({
         <p className="form-sub">Add room context, then upload photos — the AI will read the rest.</p>
 
         {/* ── 2. ROOM DIMENSIONS ──────────────────────── */}
-        <div className="upload-or">OPTIONAL: ADD ROOM DIMENSIONS</div>
-        <div className="room-dimension-grid">
-          <div className="text-input-wrap compact">
-            <label>Room width (feet)</label>
-            <input
-              type="number"
-              placeholder="e.g. 14"
-              value={form.roomWidth}
-              onChange={event => onSetField('roomWidth', Number(event.target.value))}
-            />
+        <section className="find-section-group">
+          <div className="upload-or">OPTIONAL: ADD ROOM DIMENSIONS</div>
+          <div className="find-group-helper">If known, add approximate dimensions to improve size filtering.</div>
+          <div className="room-dimension-grid">
+            <div className="text-input-wrap compact">
+              <label>Room width (feet)</label>
+              <input
+                type="number"
+                placeholder="e.g. 14"
+                value={form.roomWidth}
+                onChange={event => onSetField('roomWidth', Number(event.target.value))}
+              />
+            </div>
+            <div className="text-input-wrap compact">
+              <label>Room depth (feet)</label>
+              <input
+                type="number"
+                placeholder="e.g. 12"
+                value={form.roomDepth}
+                onChange={event => onSetField('roomDepth', Number(event.target.value))}
+              />
+            </div>
           </div>
-          <div className="text-input-wrap compact">
-            <label>Room depth (feet)</label>
-            <input
-              type="number"
-              placeholder="e.g. 12"
-              value={form.roomDepth}
-              onChange={event => onSetField('roomDepth', Number(event.target.value))}
-            />
-          </div>
-        </div>
+        </section>
 
         {/* ── 3. HIDDEN FILE INPUTS ───────────────────── */}
         {photoSlots.map(slot => (
@@ -229,10 +232,12 @@ export function FindStepRoomDetails({
         ))}
 
         {/* ── 4. PHOTO FLIP PANEL ─────────────────────── */}
-        <div className="section-label" style={{ marginTop: '28px' }}>Room photos</div>
+        <section className="find-section-group">
+          <div className="section-label" style={{ marginTop: '28px' }}>Room photos</div>
+          <div className="find-group-helper">Upload up to 4 room views. Analysis starts automatically when all slots are filled.</div>
 
-        <div className={`photo-flip-panel${isFlipped ? ' flipped' : ''}`}>
-          <div className="photo-flip-inner">
+          <div className={`photo-flip-panel${isFlipped ? ' flipped' : ''}`}>
+            <div className="photo-flip-inner">
 
             {/* FRONT ── upload grid */}
             <div className="photo-flip-front">
@@ -434,12 +439,14 @@ export function FindStepRoomDetails({
               )}
             </div>
 
+            </div>
           </div>
-        </div>
+        </section>
 
         {/* ── 5. INLINE QUESTIONS (below flip, after photos uploaded) ── */}
         {allPhotosUploaded && (
-          <div className="inline-questions-section">
+          <section className="find-section-group find-section-group--compact inline-questions-section">
+            <div className="find-group-helper">Answer the generated prompts to sharpen ranking confidence.</div>
             {questionsLoading && (
               <div className="analysis-panel loading" style={{ marginTop: '20px' }}>
                 <div className="analysis-spinner" />
@@ -493,7 +500,7 @@ export function FindStepRoomDetails({
                 Room read complete. No follow-up questions needed — continue to budget.
               </div>
             )}
-          </div>
+          </section>
         )}
 
         {/* ── 6. BUTTONS ─────────────────────────────── */}

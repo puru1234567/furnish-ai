@@ -12,7 +12,7 @@ const PATH_D =
   'M258.803 1375.68C258.803 1375.68 184.931 1017.16 243.803 800.182C275.981 681.588 384.817 635.475 372.803 513.182C355.046 332.418 -21.6799 412.791 1.80342 232.682C18.73 102.86 243.803 0.681641 243.803 0.681641'
 
 const STEPS = [
-  { index: 'I',   side: 'right' as const, progress: 0.20, title: 'Upload the room',                copy: 'Lead with the room instead of filling a long list of filters first.' },
+  { index: 'I',   side: 'right' as const, progress: 0.00, title: 'Upload the room',                copy: 'Lead with the room instead of filling a long list of filters first.' },
   { index: 'II',  side: 'right' as const, progress: 0.40, title: 'Answer a few focused questions', copy: 'The system only asks what can still change the ranking.' },
   { index: 'III', side: 'left'  as const, progress: 0.60, title: 'See why each piece fits',        copy: 'Recommendations come back with written fit logic, not only scores.' },
   { index: 'IV',  side: 'right' as const, progress: 0.80, title: 'Compare and shortlist',          copy: 'Save, compare, and share without losing the room context.' },
@@ -88,6 +88,7 @@ export function FeaturesStrip() {
     handleScroll()
     window.addEventListener('scroll', handleScroll, { passive: true })
     window.addEventListener('resize', onResize)
+
     return () => {
       window.removeEventListener('scroll', handleScroll)
       window.removeEventListener('resize', onResize)

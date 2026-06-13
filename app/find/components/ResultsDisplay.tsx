@@ -398,7 +398,10 @@ export function ResultsDisplay({
             </div>
             <div className="card-img" aria-hidden="true" />
             <div className="card-body">
-              <div className="card-brand">{item.brand}</div>
+              <div className="card-head-row">
+                <div className="card-brand">{item.brand}</div>
+                <div className="card-score-pill">Fit {item.durabilityScore}/10</div>
+              </div>
               <div className="card-name">{item.name}</div>
               <div className="card-rating">★ {item.rating} · <span>{item.reviewCount} reviews</span></div>
               <div className="stretch-price-row">
@@ -478,7 +481,10 @@ export function ResultsDisplay({
           </div>
           <div className="card-img stretch-card-media" aria-hidden="true" />
           <div className="card-body stretch-card-body">
-            <div className="card-brand">{item.brand}</div>
+            <div className="card-head-row">
+              <div className="card-brand">{item.brand}</div>
+              <div className="card-score-pill">Fit {item.durabilityScore}/10</div>
+            </div>
             <div className="card-name">{item.name}</div>
             <div className="card-rating">★ {item.rating} · <span>{item.reviewCount} reviews</span></div>
             <div className="stretch-price-row">
@@ -560,7 +566,10 @@ export function ResultsDisplay({
         </div>
         <div className="card-img" aria-hidden="true" />
         <div className="card-body">
-          <div className="card-brand">{item.brand}</div>
+          <div className="card-head-row">
+            <div className="card-brand">{item.brand}</div>
+            <div className="card-score-pill">Fit {item.durabilityScore}/10</div>
+          </div>
           <div className="card-name">{item.name}</div>
           <div className="card-rating">★ {item.rating} · <span>{item.reviewCount} reviews</span></div>
           <div className="card-price-block">
@@ -737,6 +746,7 @@ export function ResultsDisplay({
 
           <div className="sidebar-section">
             <div className="sl">Quick adjustments</div>
+            <div className="sidebar-section-note">Small nudges to reshape ranking without resetting your room context.</div>
             <div className="refine-chip-stack">
               {quickAdjustments.map(option => (
                 <button
@@ -757,6 +767,7 @@ export function ResultsDisplay({
 
           <div className="sidebar-section">
             <div className="sl">Price range</div>
+            <div className="sidebar-section-note">Adjust range, then apply to refresh this shortlist.</div>
             <div className="sidebar-range-value">
               ₹{(selectedBudget / 1000).toFixed(0)}k selected · ₹{(suggestedPriceCap / 1000).toFixed(0)}k suggested (+20%)
             </div>
@@ -807,6 +818,7 @@ export function ResultsDisplay({
 
           <div className="sidebar-section">
             <div className="sl">City</div>
+            <div className="sidebar-section-note">Availability and delivery are scoped to this city.</div>
             <select
               className="sidebar-select"
               value={form.city}

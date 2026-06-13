@@ -64,8 +64,7 @@ export function LandingHeader({
       })()
     : [
         { href: '#how', label: 'The Journey', index: '01' },
-        { href: '#about', label: 'About', index: '02' },
-        { action: onStartMatching, label: 'Start matching', index: '03', cta: true },
+        { href: '/find', label: 'Start matching', index: '02', cta: true },
       ]
 
   useEffect(() => {
@@ -161,12 +160,7 @@ export function LandingHeader({
 
         <nav className="nav-overlay-links">
           {menuItems.map(item =>
-            item.href?.startsWith('#') ? (
-              <a key={item.label} href={item.href} className={`nav-overlay-link${item.cta ? ' nav-overlay-link--cta' : ''}`} onClick={() => setMenuOpen(false)}>
-                <span className="nav-link-index">{item.index}</span>
-                <span className="nav-link-text">{item.label}</span>
-              </a>
-            ) : item.href ? (
+            item.href ? (
               <Link key={item.label} href={item.href} className={`nav-overlay-link${item.cta ? ' nav-overlay-link--cta' : ''}`} onClick={() => setMenuOpen(false)}>
                 <span className="nav-link-index">{item.index}</span>
                 <span className="nav-link-text">{item.label}</span>

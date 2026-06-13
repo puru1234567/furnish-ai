@@ -163,7 +163,114 @@ export default function HomePage() {
         savedResults={savedResults}
         onStartRoomRead={handleStartRoomRead}
       />
+
+      <section className="home-insert home-stats-block" aria-label="Platform highlights">
+        <div className="home-insert-shell">
+          <div className="home-insert-kicker">Snapshot</div>
+          <h2 className="home-insert-title">Signals that keep the shortlist practical</h2>
+          <div className="home-stats-grid">
+            <article className="home-stat-card">
+              <div className="home-stat-value">4</div>
+              <div className="home-stat-label">Room angles captured before scoring</div>
+            </article>
+            <article className="home-stat-card">
+              <div className="home-stat-value">3</div>
+              <div className="home-stat-label">Focused rounds from room read to shortlist</div>
+            </article>
+            <article className="home-stat-card">
+              <div className="home-stat-value">1</div>
+              <div className="home-stat-label">Unified shortlist view for compare and save</div>
+            </article>
+            <article className="home-stat-card">
+              <div className="home-stat-value">100%</div>
+              <div className="home-stat-label">Recommendations anchored to room context</div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section className="home-insert home-categories-block" aria-label="Furniture category shortcuts">
+        <div className="home-insert-shell">
+          <div className="home-insert-kicker">Category shortcuts</div>
+          <h2 className="home-insert-title">Start from the category you have in mind</h2>
+          <p className="home-insert-copy">These shortcuts keep the first step focused while the room analysis handles fit and constraints.</p>
+          <div className="home-shortcuts-grid" role="list" aria-label="Category shortcuts list">
+            <span className="home-shortcut-pill" role="listitem">Sofas and sectionals</span>
+            <span className="home-shortcut-pill" role="listitem">Beds and storage beds</span>
+            <span className="home-shortcut-pill" role="listitem">Dining tables</span>
+            <span className="home-shortcut-pill" role="listitem">Study desks</span>
+            <span className="home-shortcut-pill" role="listitem">TV units</span>
+            <span className="home-shortcut-pill" role="listitem">Accent chairs</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="home-insert home-process-block" aria-label="Process explanation">
+        <div className="home-insert-shell">
+          <div className="home-insert-kicker">Process</div>
+          <h2 className="home-insert-title">How room-aware matching stays clear</h2>
+          <div className="home-process-grid">
+            <article className="home-process-card">
+              <div className="home-process-step">Step 1</div>
+              <h3 className="home-process-title">Capture the room first</h3>
+              <p className="home-process-copy">Upload a few room views so every recommendation starts from actual space constraints.</p>
+            </article>
+            <article className="home-process-card">
+              <div className="home-process-step">Step 2</div>
+              <h3 className="home-process-title">Answer only what changes rank</h3>
+              <p className="home-process-copy">The flow asks short, targeted questions only when the answer can alter shortlist quality.</p>
+            </article>
+            <article className="home-process-card">
+              <div className="home-process-step">Step 3</div>
+              <h3 className="home-process-title">Review with context intact</h3>
+              <p className="home-process-copy">Compare options with fit reasoning, then save choices without losing room context.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
       <FeaturesStrip />
+
+      <footer className="home-footer-block" aria-label="Site footer">
+        <div className="home-footer-shell">
+          <div className="home-footer-main">
+            <div className="home-footer-brand">
+              <div className="home-footer-logo-row">
+                <span className="home-footer-logo-mark" aria-hidden="true">✦</span>
+                <span className="home-footer-logo-text">FurnishAI</span>
+              </div>
+              <p className="home-footer-copy">
+                AI-powered furniture discovery. Find pieces that actually fit your room, style, and constraints.
+              </p>
+            </div>
+
+            <div className="home-footer-links-grid">
+              <div className="home-footer-link-column">
+                <span className="home-footer-label">Product</span>
+                <a href="/find" className="home-footer-link">Find Furniture</a>
+                <a href="/saved" className="home-footer-link">Saved</a>
+              </div>
+
+              <div className="home-footer-link-column">
+                <span className="home-footer-label">Company</span>
+                <a href="/vendor" className="home-footer-link">Vendors</a>
+                <a href="/admin" className="home-footer-link">Admin</a>
+              </div>
+
+              <div className="home-footer-link-column">
+                <span className="home-footer-label">Account</span>
+                <a href="/login" className="home-footer-link">Login</a>
+                <a href="/signup" className="home-footer-link">Sign Up</a>
+              </div>
+            </div>
+          </div>
+
+          <div className="home-footer-bottom">
+            <p>© 2026 FurnishAI. All rights reserved.</p>
+          </div>
+        </div>
+      </footer>
+
       {authEnabled && toast ? (
         <div className={`auth-toast auth-toast--${toast.kind}`} role="status" aria-live="polite">
           {toast.message}

@@ -6,12 +6,13 @@ interface FindProgressStepsProps {
 const STEP_META = [
   { label: 'Brief', helper: 'Start with one item' },
   { label: 'Room', helper: 'Upload room views' },
-  { label: 'Signals', helper: 'Answer quick prompts' },
   { label: 'Budget', helper: 'Set guardrails' },
   { label: 'Polish', helper: 'Optional refinements' },
 ]
 
 export function FindProgressSteps({ currentStep, livePillText }: FindProgressStepsProps) {
+  const currentMeta = STEP_META[Math.max(0, Math.min(STEP_META.length - 1, currentStep - 1))]
+
   return (
     <div className="form-chrome">
       <div className="progress-steps">
@@ -30,12 +31,16 @@ export function FindProgressSteps({ currentStep, livePillText }: FindProgressSte
                 <div className="progress-step-helper">{stepMeta.helper}</div>
               </div>
             </div>,
-            index < 4 ? <div key={`line-${stepNumber}`} className={`step-line ${isDone ? 'done' : ''}`}></div> : null,
+            index < 3 ? <div key={`line-${stepNumber}`} className={`step-line ${isDone ? 'done' : ''}`}></div> : null,
           ]
         })}
       </div>
       <div className="chrome-meta">
         <div className="live-count">{livePillText}</div>
+      </div>
+      <div className="progress-step-visibility" aria-live="polite">
+        <span className="progress-step-current">Now: {currentMeta.label}</span>
+        <span className="progress-step-current-helper">{currentMeta.helper}</span>
       </div>
     </div>
   )

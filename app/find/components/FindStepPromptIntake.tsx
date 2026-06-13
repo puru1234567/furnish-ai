@@ -88,60 +88,65 @@ export function FindStepPromptIntake({
       <FindProgressSteps currentStep={1} livePillText={livePillText} />
 
       <div className="form-body journey-form-body">
-        <div className="form-eyebrow">Step 1 of 5</div>
+        <div className="form-eyebrow">Step 1 of 4</div>
         <h2 className="form-title">Tell us what you want</h2>
-        <p className="form-sub">
-          Start with one furniture item and a realistic budget. We will use the room and follow-up answers to shape the shortlist after this.
-        </p>
-
-        <div className="text-input-wrap">
-          <label htmlFor="intake-request">What furniture are you looking for?</label>
-          <textarea
-            id="intake-request"
-            rows={4}
-            placeholder={`e.g. ${ROTATING_EXAMPLES[exampleIndex]}`}
-            value={requestText}
-            onChange={event => setRequestText(event.target.value)}
-          />
-        </div>
-
-        <div className="text-input-wrap">
-          <label htmlFor="intake-budget">Budget</label>
-          <div className="intake-budget-wrap">
-            <span className="intake-budget-prefix">₹</span>
-            <input
-              id="intake-budget"
-              type="number"
-              min={1000}
-              step={500}
-              value={budgetValue}
-              onChange={event => setBudgetValue(event.target.value)}
-              placeholder="30000"
+        <section className="find-section-group">
+          <div className="find-group-helper">Describe one item clearly so we can route to the right shortlist.</div>
+          <div className="text-input-wrap">
+            <label htmlFor="intake-request">What furniture are you looking for?</label>
+            <textarea
+              id="intake-request"
+              rows={4}
+              placeholder={`e.g. ${ROTATING_EXAMPLES[exampleIndex]}`}
+              value={requestText}
+              onChange={event => setRequestText(event.target.value)}
             />
           </div>
-        </div>
+        </section>
+
+        <section className="find-section-group">
+          <div className="find-group-helper">Pick a realistic upper budget to avoid noisy matches.</div>
+          <div className="text-input-wrap">
+            <label htmlFor="intake-budget">Budget</label>
+            <div className="intake-budget-wrap">
+              <span className="intake-budget-prefix">₹</span>
+              <input
+                id="intake-budget"
+                type="number"
+                min={1000}
+                step={500}
+                value={budgetValue}
+                onChange={event => setBudgetValue(event.target.value)}
+                placeholder="30000"
+              />
+            </div>
+          </div>
+        </section>
 
         {errorMessage && (
           <div className="intake-feedback error">{errorMessage}</div>
         )}
 
         {selectionMode !== 'idle' && candidateOptions.length > 0 && (
-          <div className="intake-choices">
-            <div className="section-label">Choose one item to continue</div>
-            <div className="chip-grid intake-choice-grid">
-              {candidateOptions.map(option => (
-                <button
-                  key={option.id}
-                  className="chip"
-                  onClick={() => confirmSelection(option.id)}
-                >
-                  <span className="chip-icon">{option.icon}</span>
-                  <span className="chip-label">{option.label}</span>
-                  <span className="chip-sub">Continue with {getFurnitureLabel(option.id).toLowerCase()}</span>
-                </button>
-              ))}
+          <section className="find-section-group">
+            <div className="find-group-helper">We found multiple options. Choose one to continue.</div>
+            <div className="intake-choices">
+              <div className="section-label">Choose one item to continue</div>
+              <div className="chip-grid intake-choice-grid">
+                {candidateOptions.map(option => (
+                  <button
+                    key={option.id}
+                    className="chip"
+                    onClick={() => confirmSelection(option.id)}
+                  >
+                    <span className="chip-icon">{option.icon}</span>
+                    <span className="chip-label">{option.label}</span>
+                    <span className="chip-sub">Continue with {getFurnitureLabel(option.id).toLowerCase()}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          </section>
         )}
 
         <div className="btn-row">

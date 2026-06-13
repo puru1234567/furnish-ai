@@ -551,7 +551,10 @@ export default function FindPage() {
           Furnish<span>AI</span>
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <Link href="/" className="btn-skip">← Back to home</Link>
+          <Link href="/" className="btn-skip">
+            <span aria-hidden="true">← </span>
+            <span>Back to home</span>
+          </Link>
         </div>
       </header>
 
@@ -651,6 +654,7 @@ export default function FindPage() {
                     <span className="understanding-tag">{form.deliveryPreference}</span>
                   </div>
 
+                  <p className="control-helper">Set budget behavior first, then choose speed and delivery comfort.</p>
                   <div className="section-label">Budget flexibility</div>
                   <div className="budget-split">
                     {BUDGET_OPTIONS.map((opt, idx) => (
@@ -709,6 +713,7 @@ export default function FindPage() {
                   <h2 className="form-title">Fine-tune <span className="optional-tag">all optional — skip to results</span></h2>
                   <p className="form-sub">Optional only. Exclude obvious mismatches or add one taste bias, then get the shortlist.</p>
 
+                  <p className="control-helper">Use only 1-2 refinements to keep the shortlist broad and useful.</p>
                   <div className="section-label">Materials to avoid</div>
                   <div className="toggle-grid">
                     {MATERIAL_AVOIDANCES.map((m, idx) => (

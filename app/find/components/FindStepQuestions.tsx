@@ -62,7 +62,7 @@ export function FindStepQuestions({
 
       <div className="form-body journey-form-body question-journey-body">
         {echoLine && <div className="echo-panel">{echoLine}</div>}
-        <div className="form-eyebrow">Step 3 of 5</div>
+        <div className="form-eyebrow">Step 3 of 4</div>
         <h2 className="form-title">A few quick questions about your {furnitureTypeLabel || 'sofa'}</h2>
         <p className="form-sub">One tap per answer. Each choice updates the shortlist.</p>
 
@@ -84,7 +84,9 @@ export function FindStepQuestions({
         )}
 
         {roomAnalysis && !questionsLoading && (
-          <div className="analysis-panel success question-room-context">
+          <section className="find-section-group find-section-group--compact">
+            <div className="find-group-helper">Room context below is already applied to your shortlist ranking.</div>
+            <div className="analysis-panel success question-room-context">
             <div className="analysis-header">
               <div className="analysis-badge">✦ AI Room Context</div>
               <div className="analysis-confidence">{Math.round(roomAnalysis.confidenceScore * 100)}% confidence</div>
@@ -168,7 +170,8 @@ export function FindStepQuestions({
                 </div>
               </div>
             )}
-          </div>
+            </div>
+          </section>
         )}
 
         {!questionsLoading && contextualQuestions.length === 0 && !questionsError && (
@@ -200,7 +203,9 @@ export function FindStepQuestions({
         )}
 
         {!questionsLoading && question && (
-          <div className="question-single" key={questionAnimKey}>
+          <section className="find-section-group find-section-group--compact">
+            <div className="find-group-helper">Tap one option. Your answer is saved immediately.</div>
+            <div className="question-single" key={questionAnimKey}>
             <div className="journey-question-meta">
               <div className="question-counter">Question {questionSubIndex + 1} of {contextualQuestions.length}</div>
               <div className="journey-question-hint">Tap once to answer</div>
@@ -222,7 +227,8 @@ export function FindStepQuestions({
                 ← Previous question
               </button>
             )}
-          </div>
+            </div>
+          </section>
         )}
 
         <div className="btn-row">
