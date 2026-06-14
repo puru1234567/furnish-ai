@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
+import { ANALYTICS_EVENT_NAMES } from '@/lib/analytics/events'
 
 const OK = () => NextResponse.json({ ok: true }, { status: 200 })
 
@@ -26,28 +27,90 @@ function createTrackingClient() {
   return null
 }
 
+type RawEvent = {
+  eventName?: unknown
+  payload?: unknown
+  sessionId?: unknown
+  timestamp?: unknown
+  pagePath?: unknown
+  userId?: unknown
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function normalizeRawEvents(body: unknown): RawEvent[] {
+  if (!isObject(body)) return []
+
+  const maybeEvents = body.events
+  if (Array.isArray(maybeEvents)) {
+    return maybeEvents.filter(isObject)
+  }
+
+  // Backward compatibility with old shape: { sessionId, eventType, payload }
+  if (
+    typeof body.sessionId === 'string' &&
+    typeof body.eventType === 'string'
+  ) {
+    return [{
+      sessionId: body.sessionId,
+      eventName: body.eventType,
+      payload: body.payload,
+      timestamp: new Date().toISOString(),
+      pagePath: typeof body.pagePath === 'string' ? body.pagePath : null,
+      userId: typeof body.userId === 'string' ? body.userId : null,
+    }]
+  }
+
+  return []
+}
+
+function sanitizeEvent(event: RawEvent) {
+  const sessionId = typeof event.sessionId === 'string' ? event.sessionId.trim() : ''
+  const eventName = typeof event.eventName === 'string' ? event.eventName.trim() : ''
+
+  if (!sessionId || !eventName) return null
+
+  if (!ANALYTICS_EVENT_NAMES.has(eventName)) {
+    return null
+  }
+
+  const timestamp = typeof event.timestamp === 'string' ? event.timestamp : new Date().toISOString()
+  const pagePath = typeof event.pagePath === 'string' ? event.pagePath : null
+  const userId = typeof event.userId === 'string' ? event.userId : null
+  const payload = isObject(event.payload) ? event.payload : {}
+
+  return {
+    session_id: sessionId,
+    event_type: eventName,
+    payload: {
+      ...payload,
+      meta: {
+        timestamp,
+        pagePath,
+        userId,
+      },
+    },
+  }
+}
+
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     const body = await req.json()
-    const { sessionId, eventType, payload } = body ?? {}
+    const rawEvents = normalizeRawEvents(body)
+    const events = rawEvents
+      .map(sanitizeEvent)
+      .filter((event): event is NonNullable<typeof event> => Boolean(event))
 
-    // Validate: sessionId and eventType must be non-empty strings
-    if (
-      typeof sessionId !== 'string' || sessionId.trim() === '' ||
-      typeof eventType !== 'string' || eventType.trim() === ''
-    ) {
-      // Return 200 — even invalid requests must not error on the client
+    if (events.length === 0) {
       return OK()
     }
 
     const adminSupabase = createTrackingClient()
     const supabase = adminSupabase ?? await createClient()
 
-    const { error } = await supabase.from('session_events').insert({
-      session_id: sessionId.trim(),
-      event_type: eventType.trim(),
-      payload: payload ?? null,
-    })
+    const { error } = await supabase.from('session_events').insert(events)
 
     if (error) {
       // Tracking is best-effort; avoid noisy logs for expected RLS misses.

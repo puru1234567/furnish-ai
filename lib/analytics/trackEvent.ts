@@ -1,22 +1,43 @@
-// lib/analytics/trackEvent.ts
-// Fire-and-forget analytics event sender.
-// Never throws — tracking must never break the app.
+// Compatibility layer over the typed analytics service.
+// Keep this file to avoid breaking older imports.
+
+"use client"
+
+import { analyticsService } from "./service"
+import type { AnalyticsEventName, AnalyticsEventPayloadMap } from "./events"
+
+type LegacyPayload = Record<string, unknown>
+
+function isTypedEventName(value: string): value is AnalyticsEventName {
+  return value.includes(".")
+}
+
+export function trackTypedEvent<TName extends AnalyticsEventName>(
+  eventName: TName,
+  payload: AnalyticsEventPayloadMap[TName],
+): void {
+  analyticsService.track(eventName, payload)
+}
 
 export async function trackEvent(
   sessionId: string,
   eventType: string,
-  payload: Record<string, unknown>
+  payload: LegacyPayload,
 ): Promise<void> {
-  try {
-    const res = await fetch('/api/track', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId, eventType, payload }),
+  analyticsService.initialize(null)
+
+  if (isTypedEventName(eventType)) {
+    analyticsService.track(eventType, payload as AnalyticsEventPayloadMap[typeof eventType], {
+      userId: null,
     })
-    if (!res.ok) {
-      console.warn('[trackEvent] failed silently:', res.status)
-    }
-  } catch {
-    // Never throw — tracking must never break the app
+    return
   }
+
+  analyticsService.track("recommendation.engaged", {
+    productId: String(payload.productId ?? "unknown"),
+    action: "view_details",
+    section: `legacy:${eventType}`,
+  })
+
+  void sessionId
 }

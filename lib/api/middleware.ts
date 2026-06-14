@@ -4,6 +4,8 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import type { ApiResponse, ApiError, ApiErrorResponse } from './dtos'
+import { trackServerEvent } from '@/lib/analytics'
+import type { AnalyticsEventName, AnalyticsEventPayloadMap } from '@/lib/analytics'
 
 /**
  * Type-safe API route handler wrapper
@@ -85,4 +87,26 @@ export function createErrorResponse(
  */
 export function createSuccessResponse<T>(data: T): ApiResponse<T> {
   return { success: true, data }
+}
+
+/**
+ * Wrap any request handler with non-blocking server-side analytics.
+ * Analytics failures never affect API correctness.
+ */
+export function withApiTracking<TEventName extends AnalyticsEventName, TResponse>(
+  eventName: TEventName,
+  payloadFactory: (req: NextRequest, result: TResponse) => AnalyticsEventPayloadMap[TEventName],
+  handler: (req: NextRequest) => Promise<TResponse>,
+) {
+  return async (req: NextRequest): Promise<TResponse> => {
+    const result = await handler(req)
+
+    void trackServerEvent({
+      request: req,
+      eventName,
+      payload: payloadFactory(req, result),
+    })
+
+    return result
+  }
 }
