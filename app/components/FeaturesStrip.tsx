@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 // ViewBox matches reference proportions exactly
 const VB_W = 375
@@ -24,6 +24,10 @@ export function FeaturesStrip() {
   const svgRef      = useRef<SVGSVGElement>(null)
   const maskRectRef = useRef<SVGRectElement>(null)
   const itemRefs    = useRef<(HTMLDivElement | null)[]>([])
+  const mobileCardRefs = useRef<(HTMLLIElement | null)[]>([])
+  const [visibleMobileCards, setVisibleMobileCards] = useState<boolean[]>(
+    () => STEPS.map((_, idx) => idx === 0)
+  )
 
   useEffect(() => {
     const section  = sectionRef.current
@@ -95,6 +99,36 @@ export function FeaturesStrip() {
     }
   }, [])
 
+  useEffect(() => {
+    const nodes = mobileCardRefs.current.filter((el): el is HTMLLIElement => Boolean(el))
+    if (nodes.length === 0) return
+
+    const observer = new IntersectionObserver(
+      entries => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) return
+          const indexAttr = (entry.target as HTMLElement).dataset.stepIndex
+          if (!indexAttr) return
+          const index = Number(indexAttr)
+          setVisibleMobileCards(current => {
+            if (current[index]) return current
+            const next = [...current]
+            next[index] = true
+            return next
+          })
+        })
+      },
+      {
+        threshold: 0.45,
+        rootMargin: '0px 0px -12% 0px',
+      }
+    )
+
+    nodes.forEach(node => observer.observe(node))
+
+    return () => observer.disconnect()
+  }, [])
+
   return (
     <section ref={sectionRef} className="features-strip" id="how">
       <div className="features-strip-head">
@@ -153,6 +187,21 @@ export function FeaturesStrip() {
           ))}
         </div>
       </div>
+
+      <ol className="tl-mobile-list" aria-label="How it works steps">
+        {STEPS.map((step, idx) => (
+          <li
+            key={step.index}
+            ref={el => { mobileCardRefs.current[idx] = el }}
+            data-step-index={idx}
+            className={`tl-mobile-card ${visibleMobileCards[idx] ? 'tl-mobile-card--visible' : ''}`}
+          >
+            <div className="tl-mobile-index">Step {idx + 1}</div>
+            <div className="tl-mobile-title">{step.title}</div>
+            <div className="tl-mobile-copy">{step.copy}</div>
+          </li>
+        ))}
+      </ol>
 
       <ol className="tl-sr-list">
         {STEPS.map(step => (

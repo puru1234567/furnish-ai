@@ -9,6 +9,7 @@ import { getUserRole, type AppRole } from '@/lib/supabase/roles'
 import { readSavedResultSummary, type SavedResultSummary } from '@/lib/utils/saved-results'
 import { LandingHeader } from './components/LandingHeader'
 import { LandingHero } from './components/LandingHero'
+import { FeaturesStrip } from './components/FeaturesStrip'
 import { AuthModal } from './components/AuthModal'
 
 type AuthMode = 'login' | 'signup'
@@ -204,29 +205,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="home-insert home-process-block" aria-label="Process explanation">
-        <div className="home-insert-shell">
-          <div className="home-insert-kicker">Process</div>
-          <h2 className="home-insert-title">How room-aware matching stays clear</h2>
-          <div className="home-process-grid">
-            <article className="home-process-card">
-              <div className="home-process-step">Step 1</div>
-              <h3 className="home-process-title">Capture the room first</h3>
-              <p className="home-process-copy">Upload a few room views so every recommendation starts from actual space constraints.</p>
-            </article>
-            <article className="home-process-card">
-              <div className="home-process-step">Step 2</div>
-              <h3 className="home-process-title">Answer only what changes rank</h3>
-              <p className="home-process-copy">The flow asks short, targeted questions only when the answer can alter shortlist quality.</p>
-            </article>
-            <article className="home-process-card">
-              <div className="home-process-step">Step 3</div>
-              <h3 className="home-process-title">Review with context intact</h3>
-              <p className="home-process-copy">Compare options with fit reasoning, then save choices without losing room context.</p>
-            </article>
-          </div>
-        </div>
-      </section>
+      <FeaturesStrip />
 
       <footer className="home-footer-block" aria-label="Site footer">
         <div className="home-footer-shell">
