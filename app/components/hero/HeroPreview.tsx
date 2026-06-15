@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion"
 import { RecommendationGrid } from "../recommendations/RecommendationGrid"
+import { HeroCarousel } from "../recommendations/HeroCarousel"
 import { transitions } from "../motion/presets"
 import type { AIRecommendation } from "../recommendations/types"
 
@@ -25,18 +26,22 @@ export function HeroPreview({ isLoading, recommendations, compact = false }: Her
 			transition={transitions.reveal}
 		>
 			<div className="mb-3 flex items-center justify-between">
-				<h2 className={compact ? "text-sm font-semibold text-[#f4efe4]" : "text-sm font-semibold text-neutral-900"}>
+				<h2 className={compact ? "hero-preview-heading text-sm font-semibold" : "text-sm font-semibold text-neutral-900"}>
 					AI recommendation assistant
 				</h2>
 				<span className={compact
-					? "rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-[#f4efe4]/88"
+					? "hero-preview-meta rounded-full border border-white/20 bg-white/10 px-2.5 py-1 text-[11px] font-semibold"
 					: "rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-800"
 				}>
 					Reasoned ranking
 				</span>
 			</div>
 
-			<RecommendationGrid items={recommendations} isLoading={isLoading} tone={compact ? "dark" : "light"} />
+			{compact ? (
+				<HeroCarousel items={recommendations} isLoading={isLoading} />
+			) : (
+				<RecommendationGrid items={recommendations} isLoading={isLoading} tone="light" />
+			)}
 		</motion.aside>
 	)
 }

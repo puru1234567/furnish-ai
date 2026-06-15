@@ -7,7 +7,6 @@ import { HeroPreview } from "./HeroPreview"
 import { HeroSearch } from "./HeroSearch"
 import { useAnalyticsSession, useScrollDepthTracking, useSearchRefinementTracking, useSessionDurationTracking } from "@/lib/analytics"
 import { Reveal, StaggerReveal } from "../motion/primitives"
-import { Button } from "@/app/components/ui"
 import type { AIRecommendation } from "../recommendations/types"
 
 interface HeroProps {
@@ -170,7 +169,6 @@ const MOCK_RECOMMENDATIONS: AIRecommendation[] = [
 export function Hero({ displayName, hasSavedResults, onStartRoomRead }: HeroProps) {
 	const [query, setQuery] = useState(PROMPT_EXAMPLES[0])
 	const [isLoading, setIsLoading] = useState(false)
-	const [previewOpen, setPreviewOpen] = useState(false)
 	const { trackSearchSubmitted } = useSearchRefinementTracking()
 
 	useAnalyticsSession(null)
@@ -292,22 +290,9 @@ export function Hero({ displayName, hasSavedResults, onStartRoomRead }: HeroProp
 					<p className="hero-atmosphere-copy">
 						The system uses the room first, then asks a few questions only when they can change the ranking.
 					</p>
-					<div className="mt-4">
-						<Button
-							type="button"
-							variant="secondary"
-							size="sm"
-							onClick={() => setPreviewOpen((previous) => !previous)}
-							className="border-white/35 bg-white/12 text-[#f4efe4] hover:bg-white/20"
-						>
-							{previewOpen ? "Hide AI preview" : "Show AI preview"}
-						</Button>
+					<div className="mt-4 rounded-2xl border border-white/18 bg-white/10 p-3">
+						<HeroPreview isLoading={isLoading} recommendations={MOCK_RECOMMENDATIONS} compact />
 					</div>
-					{previewOpen ? (
-						<div className="mt-4 rounded-2xl border border-white/18 bg-white/10 p-3">
-							<HeroPreview isLoading={isLoading} recommendations={MOCK_RECOMMENDATIONS.slice(0, 2)} compact />
-						</div>
-					) : null}
 				</div>
 			</motion.aside>
 		</section>

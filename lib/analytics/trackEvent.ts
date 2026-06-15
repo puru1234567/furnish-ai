@@ -27,7 +27,7 @@ export async function trackEvent(
   analyticsService.initialize(null)
 
   if (isTypedEventName(eventType)) {
-    analyticsService.track(eventType, payload as AnalyticsEventPayloadMap[typeof eventType], {
+    analyticsService.track(eventType, payload as unknown as AnalyticsEventPayloadMap[typeof eventType], {
       userId: null,
     })
     return

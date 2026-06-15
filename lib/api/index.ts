@@ -3,4 +3,4 @@
 
 export * from './dtos'
 export * from './validation'
-export * from './middleware'
+export { apiHandler, withApiTracking } from './middleware'
