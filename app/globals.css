@@ -5074,6 +5074,12 @@ input[type=range]::-moz-range-thumb {
 /* ── desktop: refine button hidden ── */
 .refine-results-button { display: none; }
 
+@media (max-width: 768px) {
+  .refine-results-button {
+    display: block;
+  }
+}
+
 /* ── mobile sidebar backdrop ── */
 .mobile-sidebar-backdrop {
   display: none;
