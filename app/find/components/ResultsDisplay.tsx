@@ -62,6 +62,7 @@ export function ResultsDisplay({
 }: ResultsDisplayProps) {
   const [showCompareView, setShowCompareView] = useState(false)
   const [sortOpen, setSortOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [savedIds, setSavedIds] = useState<string[]>([])
   const [usefulnessRating, setUsefulnessRating] = useState<'yes' | 'partial' | 'no' | null>(null)
@@ -69,6 +70,8 @@ export function ResultsDisplay({
   const [exclusionOpen, setExclusionOpen] = useState(false)
   const [debugOpen, setDebugOpen] = useState(false)
   const [activeAdjustments, setActiveAdjustments] = useState<QuickAdjustmentId[]>([])
+  const [draftAdjustments, setDraftAdjustments] = useState<QuickAdjustmentId[]>([])
+  const [draftCity, setDraftCity] = useState(form.city)
   const [draftPriceCap, setDraftPriceCap] = useState(priceFilter)
   const [isPriceSliding, setIsPriceSliding] = useState(false)
   const [hasAppliedPriceCap, setHasAppliedPriceCap] = useState(false)
@@ -133,6 +136,45 @@ export function ResultsDisplay({
     : suggestedPriceCap
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    const media = window.matchMedia('(max-width: 768px)')
+    const update = () => setIsMobile(media.matches)
+    update()
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+
+  useEffect(() => {
+    if (!isMobile || !mobileSidebarOpen) return
+
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMobileSidebarOpen(false)
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = originalOverflow
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [isMobile, mobileSidebarOpen])
+
+  useEffect(() => {
+    setDraftCity(form.city)
+  }, [form.city])
+
+  useEffect(() => {
+    if (!mobileSidebarOpen) {
+      setDraftAdjustments(activeAdjustments)
+      setDraftCity(form.city)
+    }
+  }, [mobileSidebarOpen, activeAdjustments, form.city])
+
+  useEffect(() => {
     const nextDraft = clampPrice(draftPriceCap || suggestedPriceCap)
     if (nextDraft !== draftPriceCap) {
       setDraftPriceCap(nextDraft)
@@ -148,6 +190,9 @@ export function ResultsDisplay({
   }, [hasAppliedPriceCap, priceFilter, clampPrice, onPriceFilterChange])
 
   const hasPendingPriceChange = draftPriceCap !== appliedPriceCap
+  const sameAdjustments = draftAdjustments.length === activeAdjustments.length
+    && draftAdjustments.every(id => activeAdjustments.includes(id))
+  const hasPendingMobileChanges = hasPendingPriceChange || draftCity !== form.city || !sameAdjustments
   const sliderProgress = sliderMax === sliderMin
     ? 0
     : ((draftPriceCap - sliderMin) / (sliderMax - sliderMin)) * 100
@@ -306,12 +351,33 @@ export function ResultsDisplay({
   }, [activeResults.length, form])
 
   const toggleQuickAdjustment = useCallback((id: QuickAdjustmentId) => {
+    if (isMobile && mobileSidebarOpen) {
+      setDraftAdjustments(current =>
+        current.includes(id)
+          ? current.filter(activeId => activeId !== id)
+          : [...current, id]
+      )
+      return
+    }
+
     setActiveAdjustments(current =>
       current.includes(id)
         ? current.filter(activeId => activeId !== id)
         : [...current, id]
     )
-  }, [])
+  }, [isMobile, mobileSidebarOpen])
+
+  const openMobileControls = useCallback(() => {
+    setDraftAdjustments(activeAdjustments)
+    setDraftCity(form.city)
+    setMobileSidebarOpen(true)
+  }, [activeAdjustments, form.city])
+
+  const closeMobileControls = useCallback(() => {
+    setDraftAdjustments(activeAdjustments)
+    setDraftCity(form.city)
+    setMobileSidebarOpen(false)
+  }, [activeAdjustments, form.city])
 
   const handleApplyPrice = useCallback(async () => {
     const nextPrice = clampPrice(draftPriceCap)
@@ -326,6 +392,20 @@ export function ResultsDisplay({
       setIsApplyingPrice(false)
     }
   }, [clampPrice, draftPriceCap, onApplyPriceCap, onPriceFilterChange])
+
+  const applyMobileControls = useCallback(async () => {
+    setActiveAdjustments(draftAdjustments)
+
+    if (draftCity !== form.city) {
+      await Promise.resolve(onCityChange(draftCity))
+    }
+
+    if (hasPendingPriceChange) {
+      await handleApplyPrice()
+    }
+
+    setMobileSidebarOpen(false)
+  }, [draftAdjustments, draftCity, form.city, hasPendingPriceChange, handleApplyPrice, onCityChange])
 
   const handleUsefulnessFeedback = useCallback((rating: 'yes' | 'partial' | 'no') => {
     setUsefulnessRating(rating)
@@ -737,7 +817,13 @@ export function ResultsDisplay({
         }
       `}</style>
       <div className="results-wrapper results-shell">
-        <aside className={`results-sidebar ${mobileSidebarOpen ? 'mobile-open' : ''}`}>
+        <aside
+          id="shortlist-controls-popup"
+          role={isMobile ? 'dialog' : undefined}
+          aria-modal={isMobile ? true : undefined}
+          aria-label="Shortlist controls"
+          className={`results-sidebar ${mobileSidebarOpen ? 'mobile-open' : ''}`}
+        >
           <div className="sidebar-shell">
             <div className="sidebar-kicker">Shortlist controls</div>
             <div className="sidebar-title">Tune the room, not just the filters</div>
@@ -752,9 +838,9 @@ export function ResultsDisplay({
                 <button
                   key={option.id}
                   type="button"
-                  className={`refine-chip ${activeAdjustments.includes(option.id) ? 'active' : ''}`}
+                  className={`refine-chip ${(isMobile && mobileSidebarOpen ? draftAdjustments : activeAdjustments).includes(option.id) ? 'active' : ''}`}
                   onClick={() => toggleQuickAdjustment(option.id)}
-                  aria-pressed={activeAdjustments.includes(option.id)}
+                  aria-pressed={(isMobile && mobileSidebarOpen ? draftAdjustments : activeAdjustments).includes(option.id)}
                 >
                   {option.label}
                 </button>
@@ -821,12 +907,38 @@ export function ResultsDisplay({
             <div className="sidebar-section-note">Availability and delivery are scoped to this city.</div>
             <select
               className="sidebar-select"
-              value={form.city}
-              onChange={e => onCityChange(e.target.value)}
+              value={isMobile && mobileSidebarOpen ? draftCity : form.city}
+              onChange={e => {
+                if (isMobile && mobileSidebarOpen) {
+                  setDraftCity(e.target.value)
+                } else {
+                  onCityChange(e.target.value)
+                }
+              }}
             >
               {CITIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
+
+          {isMobile ? (
+            <div className="sidebar-section sidebar-actions-mobile">
+              <button
+                type="button"
+                className="ctrl-btn"
+                onClick={closeMobileControls}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="ctrl-btn active"
+                onClick={() => { void applyMobileControls() }}
+                disabled={!hasPendingMobileChanges || isApplyingPrice}
+              >
+                {isApplyingPrice ? 'Applying...' : 'Apply'}
+              </button>
+            </div>
+          ) : null}
 
           <div className="sidebar-section sidebar-footnote">
             <div className="sl">Captured signals</div>
@@ -1120,16 +1232,24 @@ export function ResultsDisplay({
       {mobileSidebarOpen && (
         <div
           className="mobile-sidebar-backdrop"
-          onClick={() => setMobileSidebarOpen(false)}
+          onClick={closeMobileControls}
         />
       )}
 
       <button
         type="button"
-        className="refine-results-button"
-        onClick={() => setMobileSidebarOpen(s => !s)}
+        className={`refine-results-button ${mobileSidebarOpen ? 'is-open' : ''}`}
+        aria-expanded={mobileSidebarOpen}
+        aria-controls="shortlist-controls-popup"
+        onClick={() => {
+          if (mobileSidebarOpen) {
+            closeMobileControls()
+            return
+          }
+          openMobileControls()
+        }}
       >
-        {mobileSidebarOpen ? 'Close filters' : 'Refine results'}
+        {mobileSidebarOpen ? 'Close controls' : 'Shortlist controls'}
       </button>
 
       {showCompareView && compareItemObjects.length > 0 && (

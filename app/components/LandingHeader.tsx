@@ -69,6 +69,12 @@ export function LandingHeader({
 
   useEffect(() => {
     const onScroll = () => {
+      if (window.scrollY <= 8) {
+        document.documentElement.style.setProperty('--landing-brand-progress', '0')
+        setScrolled(false)
+        return
+      }
+
       const hero = document.querySelector('.landing-hero') as HTMLElement | null
       const scrollLimit = hero ? Math.max(300, hero.offsetHeight * 0.48) : 480
       const progress = Math.min(window.scrollY / scrollLimit, 1)
