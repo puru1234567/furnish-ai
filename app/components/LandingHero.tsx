@@ -21,15 +21,14 @@ export function LandingHero({
   onStartRoomRead,
 }: LandingHeroProps) {
   const resolvedDisplayName = user ? displayName : 'there'
-  const hasSavedResults = Boolean(savedResults)
 
   // Keep props consumed here to preserve behavior and future extension points.
   void role
+  void savedResults
 
   return (
     <Hero
       displayName={resolvedDisplayName}
-      hasSavedResults={hasSavedResults}
       onStartRoomRead={onStartRoomRead}
     />
   )
