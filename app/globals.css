@@ -67,6 +67,9 @@
   --ds-duration-fast: 150ms;
   --ds-duration-base: 220ms;
   --ds-duration-slow: 320ms;
+
+  /* Site header height — single source of truth for layout offsets */
+  --site-header-height: 81px;
 }
 
 .ds-section {
@@ -789,6 +792,7 @@ body {
   position: sticky;
   top: 0;
   z-index: 120;
+  min-height: var(--site-header-height);
   padding: 18px 34px;
   display: flex;
   align-items: center;
@@ -2904,8 +2908,8 @@ input[type=range]::-moz-range-thumb {
   display: grid;
   grid-template-columns: 264px minmax(0, 1fr);
   gap: 24px;
-  height: calc(100dvh - 64px);
-  padding: 24px 24px 0;
+  height: calc(100dvh - var(--site-header-height));
+  padding: 6px 24px 0;
   align-items: stretch;
   animation: resultsReveal .48s cubic-bezier(.22, 1, .36, 1);
 }
@@ -2938,7 +2942,7 @@ input[type=range]::-moz-range-thumb {
   scrollbar-width: none;
   box-shadow: 0 22px 54px rgba(44,40,37,.08), inset 0 1px 0 rgba(255,255,255,.72);
   margin: 0;
-  max-height: calc(100dvh - 112px);
+  max-height: calc(100dvh - calc(var(--site-header-height) + 13px));
 }
 .results-sidebar::-webkit-scrollbar { display: none; }
 .sidebar-section {
@@ -5079,12 +5083,12 @@ input[type=range]::-moz-range-thumb {
   .results-wrapper { grid-template-columns: 1fr; }
   .results-sidebar {
     position: fixed;
-    top: 118px;
+    top: calc(var(--site-header-height) + 54px);
     left: 50%;
     right: auto;
     bottom: auto;
     width: min(540px, calc(100vw - 24px));
-    max-height: calc(100dvh - 134px);
+    max-height: calc(100dvh - calc(var(--site-header-height) + 70px));
     overflow-y: auto;
     overscroll-behavior: contain;
     border-radius: 22px;

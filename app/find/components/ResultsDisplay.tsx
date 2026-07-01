@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import type { FormData } from '../find-page-model'
-import type { RecommendedItem, RecommendationResponse, RoomAnalysis, ExclusionSummary, PipelineDebug } from '@/lib/types'
+import type { RecommendedItem, RecommendationResponse, RoomAnalysis } from '@/lib/types'
 import type { SortOption } from '@/lib/utils/sort-items'
 import { SORT_OPTIONS, sortRecommendations } from '@/lib/utils/sort-items'
 import { fmt } from '../find-page-utils'
@@ -68,7 +68,6 @@ export function ResultsDisplay({
   const [savedIds, setSavedIds] = useState<string[]>([])
   const [usefulnessRating, setUsefulnessRating] = useState<'yes' | 'partial' | 'no' | null>(null)
   const [feedbackReason, setFeedbackReason] = useState<string | null>(null)
-  const [exclusionOpen, setExclusionOpen] = useState(false)
   const [debugOpen, setDebugOpen] = useState(false)
   const [activeAdjustments, setActiveAdjustments] = useState<QuickAdjustmentId[]>([])
   const [draftAdjustments, setDraftAdjustments] = useState<QuickAdjustmentId[]>([])
@@ -304,12 +303,6 @@ export function ResultsDisplay({
   const compareItemObjects = results.filter(r => compareItems.includes(r.id))
   const activeSortLabel = SORT_OPTIONS.find(o => o.value === sortBy)?.label ?? 'Best Match'
   const wishlistCount = savedIds.length
-  const storySignals = [
-    form.roomType,
-    fmt(form.budget),
-    roomAnalysis?.spatialConstraints?.[0],
-    selectedContextualCount > 0 ? `${selectedContextualCount} answer signals` : undefined,
-  ].filter(Boolean) as string[]
   const leadingInsight = meta.contextInsights[0] ?? meta.flaggedIssues[0] ?? null
 
   const cleanSignal = useCallback((value: string) => {
@@ -892,14 +885,14 @@ export function ResultsDisplay({
   return (
     <>
       <style>{`
-        .exclusion-panel {
+        .debug-panel {
           margin: 0 0 16px;
           border: 1px solid rgba(0,0,0,0.08);
           border-radius: 8px;
           background: rgba(0,0,0,0.02);
           overflow: hidden;
         }
-        .exclusion-panel-toggle {
+        .debug-panel-toggle {
           width: 100%;
           display: flex;
           justify-content: space-between;
@@ -911,17 +904,17 @@ export function ResultsDisplay({
           text-align: left;
           gap: 8px;
         }
-        .exclusion-panel-count {
+        .debug-panel-count {
           font-size: 12px;
           color: #888;
           font-weight: 500;
         }
-        .exclusion-panel-chevron {
+        .debug-panel-chevron {
           font-size: 10px;
           color: #aaa;
           flex-shrink: 0;
         }
-        .exclusion-panel-list {
+        .debug-panel-list {
           list-style: none;
           margin: 0;
           padding: 0 14px 10px;
@@ -929,7 +922,7 @@ export function ResultsDisplay({
           flex-direction: column;
           gap: 4px;
         }
-        .exclusion-panel-list li {
+        .debug-panel-list li {
           font-size: 12px;
           color: #999;
           padding: 2px 0;
@@ -1142,26 +1135,14 @@ export function ResultsDisplay({
 
         <main className="results-main">
           <div className="results-header-shell">
-            <div className="results-context-bar">
-              <div className="results-context-copy">
+            <div className="results-header">
+              <div className="results-header-meta">
                 <div className="results-context-line">
                   {activeResults.length} matches · {form.roomType} · {form.city} · {hasStretchResults
                     ? `${fmt(form.budget)} budget + stretch to ${fmt(form.budgetMax)}`
                     : `under ${fmt(form.budget)}`}
                 </div>
                 <div className="results-context-note">{leadingInsight ?? meta.summary}</div>
-              </div>
-              <div className="results-signal-row">
-                {storySignals.map(signal => (
-                  <span key={signal} className="results-signal-pill">{signal}</span>
-                ))}
-              </div>
-            </div>
-
-            <div className="results-header">
-              <div className="results-header-meta">
-                <div className="results-section-title">Compare, save, or reshape the shortlist</div>
-                <div className="results-section-copy">Keep the decision surface tight while adjusting what the room can support.</div>
               </div>
               <div className="results-controls">
                 <div className="sort-dropdown-wrap">
@@ -1204,58 +1185,22 @@ export function ResultsDisplay({
               <button type="button" className="compare-mode-exit" onClick={onCompareModeToggle}>Exit</button>
             </div>
           )}
-          {/* Exclusion summary panel */}
-          {meta.exclusionSummary && meta.exclusionSummary.total > 0 && (
-            <div className="exclusion-panel">
-              <button
-                type="button"
-                className="exclusion-panel-toggle"
-                onClick={() => setExclusionOpen(o => !o)}
-                aria-expanded={exclusionOpen}
-              >
-                <span className="exclusion-panel-count">{meta.exclusionSummary.total} items were filtered out for you</span>
-                <span className="exclusion-panel-chevron">{exclusionOpen ? '▴' : '▾'}</span>
-              </button>
-              {exclusionOpen && (
-                <ul className="exclusion-panel-list">
-                  {meta.exclusionSummary.byReason.budget > 0 && (
-                    <li>{meta.exclusionSummary.byReason.budget} item{meta.exclusionSummary.byReason.budget !== 1 ? 's' : ''}: over your budget</li>
-                  )}
-                  {meta.exclusionSummary.byReason.city > 0 && (
-                    <li>{meta.exclusionSummary.byReason.city} item{meta.exclusionSummary.byReason.city !== 1 ? 's' : ''}: not available in your city</li>
-                  )}
-                  {meta.exclusionSummary.byReason.outOfStock > 0 && (
-                    <li>{meta.exclusionSummary.byReason.outOfStock} item{meta.exclusionSummary.byReason.outOfStock !== 1 ? 's' : ''}: currently out of stock</li>
-                  )}
-                  {meta.exclusionSummary.byReason.material > 0 && (
-                    <li>{meta.exclusionSummary.byReason.material} item{meta.exclusionSummary.byReason.material !== 1 ? 's' : ''}: material you asked to avoid</li>
-                  )}
-                  {meta.exclusionSummary.byReason.mustHave > 0 && (
-                    <li>{meta.exclusionSummary.byReason.mustHave} item{meta.exclusionSummary.byReason.mustHave !== 1 ? 's' : ''}: missing a feature you need</li>
-                  )}
-                  {meta.exclusionSummary.byReason.size > 0 && (
-                    <li>{meta.exclusionSummary.byReason.size} item{meta.exclusionSummary.byReason.size !== 1 ? 's' : ''}: too wide for your wall</li>
-                  )}
-                </ul>
-              )}
-            </div>
-          )}
           {/* Pipeline debug panel — dev/troubleshooting tool */}
           {meta.pipelineDebug && (
-            <div className="exclusion-panel" style={{ marginBottom: 12 }}>
+            <div className="debug-panel" style={{ marginBottom: 12 }}>
               <button
                 type="button"
-                className="exclusion-panel-toggle"
+                className="debug-panel-toggle"
                 onClick={() => setDebugOpen(o => !o)}
                 aria-expanded={debugOpen}
               >
-                <span className="exclusion-panel-count" style={{ fontFamily: 'monospace' }}>
+                <span className="debug-panel-count" style={{ fontFamily: 'monospace' }}>
                   🔬 Pipeline: {meta.pipelineDebug.afterHardFilters} eligible → {meta.pipelineDebug.primary}P + {meta.pipelineDebug.stretch}S / {meta.pipelineDebug.discarded} discarded
                 </span>
-                <span className="exclusion-panel-chevron">{debugOpen ? '▴' : '▾'}</span>
+                <span className="debug-panel-chevron">{debugOpen ? '▴' : '▾'}</span>
               </button>
               {debugOpen && (
-                <ul className="exclusion-panel-list" style={{ fontFamily: 'monospace', fontSize: 11 }}>
+                <ul className="debug-panel-list" style={{ fontFamily: 'monospace', fontSize: 11 }}>
                   <li>📦 Repository total: {meta.pipelineDebug.totalInRepository}</li>
                   <li>🗑️ Rejected (pruned before score): {meta.pipelineDebug.rejectedPruned} → {meta.pipelineDebug.afterRejectionPrune} remaining</li>
                   <li>✅ After hard filters: {meta.pipelineDebug.afterHardFilters}</li>
@@ -1383,41 +1328,34 @@ export function ResultsDisplay({
         </main>
       </div>
 
-      <div className="compare-fab">
-        {compareItems.length === 1 ? (
-          <div className="compare-fab-message">
-            ⊡ Select one more to start comparing
-          </div>
-        ) : compareItems.length >= 2 ? (
-          <div className="compare-fab-with-clear">
-            <button
-              type="button"
-              className="compare-fab-btn compare-fab-active"
-              onClick={() => setShowCompareView(true)}
-            >
-              ⊡ Compare ({compareItems.length} selected) →
-            </button>
-            <button
-              type="button"
-              className="compare-fab-clear"
-              onClick={handleClearAllCompare}
-              title="Clear all selections"
-              aria-label="Clear selected items"
-            >
-              ✕
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            className="compare-fab-btn"
-            onClick={onCompareModeToggle}
-            title="Turn on compare mode"
-          >
-            {compareMode ? 'Select pieces to compare' : 'Turn on compare mode'}
-          </button>
-        )}
-      </div>
+      {compareItems.length > 0 && (
+        <div className="compare-fab">
+          {compareItems.length === 1 ? (
+            <div className="compare-fab-message">
+              ⊡ Select one more to start comparing
+            </div>
+          ) : (
+            <div className="compare-fab-with-clear">
+              <button
+                type="button"
+                className="compare-fab-btn compare-fab-active"
+                onClick={() => setShowCompareView(true)}
+              >
+                ⊡ Compare ({compareItems.length} selected) →
+              </button>
+              <button
+                type="button"
+                className="compare-fab-clear"
+                onClick={handleClearAllCompare}
+                title="Clear all selections"
+                aria-label="Clear selected items"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {mobileSidebarOpen && (
         <div
