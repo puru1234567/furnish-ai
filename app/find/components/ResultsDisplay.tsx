@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useMemo } from 'react'
+import { motion } from 'framer-motion'
 import type { FormData } from '../find-page-model'
 import type { RecommendedItem, RecommendationResponse, RoomAnalysis, ExclusionSummary, PipelineDebug } from '@/lib/types'
 import type { SortOption } from '@/lib/utils/sort-items'
@@ -76,26 +77,56 @@ export function ResultsDisplay({
   const [isPriceSliding, setIsPriceSliding] = useState(false)
   const [hasAppliedPriceCap, setHasAppliedPriceCap] = useState(false)
   const [isApplyingPrice, setIsApplyingPrice] = useState(false)
+  const [expandedWhyById, setExpandedWhyById] = useState<Record<string, boolean>>({})
 
   // Load saved results from Supabase
   useEffect(() => {
-    if (!userId) return
+    if (!userId) {
+      try {
+        const raw = localStorage.getItem('furnish_ai_local_saved_ids')
+        if (!raw) {
+          setSavedIds([])
+          return
+        }
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) {
+          setSavedIds(parsed.filter((id): id is string => typeof id === 'string'))
+          return
+        }
+        setSavedIds([])
+      } catch {
+        setSavedIds([])
+      }
+      return
+    }
+
     getSavedResults(userId).then(results => {
       setSavedIds(results.map(r => r.product_id))
     })
   }, [userId])
 
   const handleSave = useCallback((item: RecommendedItem) => {
-    if (!userId) return
-
     const alreadySaved = savedIds.includes(item.id)
+    const nextSavedIds = alreadySaved
+      ? savedIds.filter(id => id !== item.id)
+      : [...savedIds, item.id]
+
+    setSavedIds(nextSavedIds)
+
+    if (!userId) {
+      try {
+        localStorage.setItem('furnish_ai_local_saved_ids', JSON.stringify(nextSavedIds))
+      } catch {
+        // Ignore storage failures and keep in-memory toggle.
+      }
+      return
+    }
+
     if (alreadySaved) {
-      setSavedIds(prev => prev.filter(id => id !== item.id))
       void unsaveResult(userId, item.id)
       return
     }
 
-    setSavedIds(prev => [...prev, item.id])
     void saveResult(userId, sessionId ?? '', {
       product_id: item.id,
       product_name: item.name,
@@ -290,19 +321,77 @@ export function ResultsDisplay({
     return normalized.charAt(0).toUpperCase() + normalized.slice(1)
   }, [])
 
+  const humanizeDeterministicBreakdown = useCallback((raw: string) => {
+    const entries = raw
+      .split('|')
+      .map((part) => part.trim())
+      .map((part) => {
+        const match = part.match(/^([a-z_]+):\s*(-?\d+)$/i)
+        if (!match) return null
+        return { key: match[1].toLowerCase(), score: Number(match[2]) }
+      })
+      .filter((entry): entry is { key: string; score: number } => entry !== null)
+
+    if (entries.length < 4) {
+      return raw
+    }
+
+    const labelMap: Record<string, string> = {
+      pain_point: 'solving your pain-point concerns',
+      room_compact: 'compact-room compatibility',
+      room_needs: 'alignment with your room needs',
+      contextual: 'your stated preferences',
+      existing_fit: 'blending with existing furniture',
+      style_match: 'style compatibility',
+      size_fit: 'size fit for your space',
+      price_tier: 'budget alignment',
+      use_case: 'everyday use suitability',
+      social_proof: 'review and rating confidence',
+    }
+
+    const positive = entries
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3)
+      .map((entry) => labelMap[entry.key] ?? cleanSignal(entry.key))
+
+    if (positive.length === 0) {
+      return 'Balanced fit across room, style, and budget signals.'
+    }
+
+    if (positive.length === 1) {
+      return `Strong on ${positive[0]}.`
+    }
+
+    if (positive.length === 2) {
+      return `Strong on ${positive[0]} and ${positive[1]}.`
+    }
+
+    return `Strong on ${positive[0]}, ${positive[1]}, and ${positive[2]}.`
+  }, [cleanSignal])
+
   const buildWhyCopy = useCallback((item: RecommendedItem, variant: 'primary' | 'stretch') => {
     const baseMaterial = item.material.split('(')[0].trim()
     const durabilitySentence = `Durability score: ${item.durabilityScore}/10.`
+    const rawReason = (item.whyItFits ?? '').trim()
+    const isTechnicalBreakdown = /^([a-z_]+:\s*-?\d+)(\s*\|\s*[a-z_]+:\s*-?\d+)+$/i.test(rawReason)
+    const modelReason = isTechnicalBreakdown
+      ? humanizeDeterministicBreakdown(rawReason)
+      : rawReason
 
     if (variant === 'stretch') {
       const premiumSentence = item.durabilityScore >= 8
         ? 'Higher build quality than core picks.'
         : `Upgraded ${baseMaterial.toLowerCase()} construction.`
-      return `${premiumSentence} Material: ${baseMaterial}. ${item.warrantyYears}-year warranty. ${durabilitySentence}`
+      return modelReason.length > 0
+        ? `${modelReason} ${premiumSentence} ${item.warrantyYears}-year warranty. ${durabilitySentence}`
+        : `${premiumSentence} Material: ${baseMaterial}. ${item.warrantyYears}-year warranty. ${durabilitySentence}`
     }
 
-    return `Material: ${baseMaterial}. ${item.warrantyYears}-year warranty. ${durabilitySentence}`
-  }, [])
+    return modelReason.length > 0
+      ? `${modelReason} ${item.warrantyYears}-year warranty. ${durabilitySentence}`
+      : `Material: ${baseMaterial}. ${item.warrantyYears}-year warranty. ${durabilitySentence}`
+  }, [humanizeDeterministicBreakdown])
 
   const truncatePill = useCallback((value: string) => {
     return value.length > 18 ? `${value.slice(0, 17).trimEnd()}…` : value
@@ -432,6 +521,57 @@ export function ResultsDisplay({
     })
   }, [form])
 
+  const handleShareProduct = useCallback(async (item: RecommendedItem) => {
+    const shareText = `Check out ${item.name} on FurnishAI`;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: item.name,
+          text: shareText,
+          url: item.productUrl,
+        })
+        return
+      }
+      await navigator.clipboard.writeText(`${shareText}\n${item.productUrl}`)
+    } catch {
+      // Swallow share/copy failures to avoid interrupting product exploration flow.
+    }
+  }, [])
+
+  const toggleWhyExpanded = useCallback((itemId: string) => {
+    setExpandedWhyById((current) => ({
+      ...current,
+      [itemId]: !current[itemId],
+    }))
+  }, [])
+
+  const renderWhyCopy = useCallback((item: RecommendedItem, variant: 'primary' | 'stretch', whyCopy: string, compact = false) => {
+    const expanded = Boolean(expandedWhyById[item.id])
+    const threshold = compact ? 100 : 120
+    const shouldCollapse = whyCopy.length > threshold
+    const visibleCopy = shouldCollapse && !expanded
+      ? `${whyCopy.slice(0, threshold).trimEnd()}...`
+      : whyCopy
+
+    return (
+      <>
+        <div className={`why-label ${variant === 'stretch' ? 'stretch-callout-label' : ''}`}>
+          {variant === 'stretch' ? "Why it's worth it" : 'Why it fits you'}
+        </div>
+        <p className="card-why-copy">{visibleCopy}</p>
+        {shouldCollapse && (
+          <button
+            type="button"
+            className="card-why-toggle"
+            onClick={() => toggleWhyExpanded(item.id)}
+          >
+            {expanded ? 'Show less' : 'Read more'}
+          </button>
+        )}
+      </>
+    )
+  }, [expandedWhyById, toggleWhyExpanded])
+
   const renderResultCard = (
     item: RecommendedItem,
     index: number,
@@ -450,62 +590,77 @@ export function ResultsDisplay({
       if (!compactStretch) {
         // Promoted stretch — full grid card
         return (
-          <article
+          <motion.article
             key={item.id}
             className={`result-card stretch-card promoted-stretch-card ${isCompared ? 'in-compare' : ''} ${isWishlisted ? 'in-wishlist' : ''}`}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: index * 0.07, duration: 0.28 }}
+            whileHover={{ y: -3 }}
             style={{
               ...(gridSpan > 1 ? { gridColumn: `span ${gridSpan}` } : {}),
             }}
           >
             <div className="rank-badge stretch-badge">↑ Stretch Pick</div>
-            <div className="card-actions">
+            <div className="card-media">
+              <div className="card-img" aria-hidden="true" />
               <button
                 type="button"
-                className={`compare-check ${isCompared ? 'checked' : ''}`}
-                title={isCompared ? 'Remove from compare' : 'Add to compare'}
-                onClick={() => onCompareToggle(item.id)}
-              >
-                {isCompared ? '☑' : '☐'}
-              </button>
-              <button
-                type="button"
-                className="card-wishlist-btn"
+                className={`card-bookmark-btn ${isWishlisted ? 'saved' : ''}`}
                 onClick={() => { void handleSave(item) }}
-                title={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
+                title={isWishlisted ? 'Remove from saved' : 'Save item'}
+                aria-pressed={isWishlisted}
               >
-                {isWishlisted ? '❤️' : '🤍'}
+                <svg
+                  className="card-bookmark-icon"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path d="M6 3.75h12A1.25 1.25 0 0 1 19.25 5v16.7a.25.25 0 0 1-.4.2L12 16.5l-6.85 5.4a.25.25 0 0 1-.4-.2V5A1.25 1.25 0 0 1 6 3.75Z" />
+                </svg>
               </button>
             </div>
-            <div className="card-img" aria-hidden="true" />
             <div className="card-body">
               <div className="card-head-row">
                 <div className="card-brand">{item.brand}</div>
                 <div className="card-score-pill">Fit {item.durabilityScore}/10</div>
               </div>
               <div className="card-name">{item.name}</div>
-              <div className="card-rating">★ {item.rating} · <span>{item.reviewCount} reviews</span></div>
-              <div className="stretch-price-row">
+              <div className="card-price-row stretch-price-row">
                 <div className="stretch-price-stack">
                   <div className="card-price">{fmt(item.price)}</div>
                   <div className="card-location-line">{form.city} · {item.inStock ? 'In stock' : 'Ships soon'}</div>
                 </div>
-                <div className="stretch-overage">+{fmt(priceDelta)} over your budget</div>
+                <div className="card-rating-inline">★ {item.rating} <span>({item.reviewCount})</span></div>
               </div>
+              <div className="stretch-overage">+{fmt(priceDelta)} over your budget</div>
               <div className="card-divider" />
-              <div className="card-why stretch-callout">
-                <div className="why-label stretch-callout-label">Why it&apos;s worth it</div>
-                {whyCopy}
-              </div>
+              <motion.div className="card-why stretch-callout" layout>
+                {renderWhyCopy(item, variant, whyCopy)}
+              </motion.div>
               <div className="card-chip-row">
                 {attributePills.map(pill => (
                   <span key={`${item.id}-${pill}`} className="card-chip">{pill}</span>
                 ))}
               </div>
-              <div className="card-footer">
-                <div className="card-delivery">Delivery in 5-7 days · {form.city}</div>
+              <div className="card-actions-row">
                 <button
                   type="button"
-                  className="card-cta"
+                  className="card-action-btn"
+                  onClick={() => { void handleShareProduct(item) }}
+                >
+                  Share
+                </button>
+                <button
+                  type="button"
+                  className={`card-action-btn ${isCompared ? 'active-compare' : ''}`}
+                  onClick={() => onCompareToggle(item.id)}
+                >
+                  {isCompared ? 'In compare' : 'Compare'}
+                </button>
+                <button
+                  type="button"
+                  className="card-action-btn card-action-btn--cta"
                   onClick={() => {
                     if (userId) {
                       void trackProductClick(userId, sessionId ?? '', {
@@ -529,66 +684,82 @@ export function ResultsDisplay({
                   View piece →
                 </button>
               </div>
+              <div className="card-delivery">Delivery in 5-7 days · {form.city}</div>
             </div>
-          </article>
+          </motion.article>
         )
       }
 
       // Compact stretch card
       return (
-        <article
+        <motion.article
           key={item.id}
           className={`result-card stretch-card stretch-card-compact ${isCompared ? 'in-compare' : ''} ${isWishlisted ? 'in-wishlist' : ''}`}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: index * 0.07, duration: 0.28 }}
+          whileHover={{ y: -3 }}
         >
           <div className="rank-badge stretch-badge">↑ Stretch Pick</div>
-          <div className="card-actions">
+          <div className="card-media">
+            <div className="card-img stretch-card-media" aria-hidden="true" />
             <button
               type="button"
-              className={`compare-check ${isCompared ? 'checked' : ''}`}
-              title={isCompared ? 'Remove from compare' : 'Add to compare'}
-              onClick={() => onCompareToggle(item.id)}
-            >
-              {isCompared ? '☑' : '☐'}
-            </button>
-            <button
-              type="button"
-              className="card-wishlist-btn"
+              className={`card-bookmark-btn ${isWishlisted ? 'saved' : ''}`}
               onClick={() => { void handleSave(item) }}
-              title={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
+              title={isWishlisted ? 'Remove from saved' : 'Save item'}
+              aria-pressed={isWishlisted}
             >
-              {isWishlisted ? '❤️' : '🤍'}
+              <svg
+                className="card-bookmark-icon"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="M6 3.75h12A1.25 1.25 0 0 1 19.25 5v16.7a.25.25 0 0 1-.4.2L12 16.5l-6.85 5.4a.25.25 0 0 1-.4-.2V5A1.25 1.25 0 0 1 6 3.75Z" />
+              </svg>
             </button>
           </div>
-          <div className="card-img stretch-card-media" aria-hidden="true" />
           <div className="card-body stretch-card-body">
             <div className="card-head-row">
               <div className="card-brand">{item.brand}</div>
               <div className="card-score-pill">Fit {item.durabilityScore}/10</div>
             </div>
             <div className="card-name">{item.name}</div>
-            <div className="card-rating">★ {item.rating} · <span>{item.reviewCount} reviews</span></div>
-            <div className="stretch-price-row">
+            <div className="card-price-row stretch-price-row">
               <div className="stretch-price-stack">
                 <div className="card-price">{fmt(item.price)}</div>
                 <div className="card-location-line">{form.city} · {item.inStock ? 'In stock' : 'Ships soon'}</div>
               </div>
-              <div className="stretch-overage">+{fmt(priceDelta)} over your budget</div>
+              <div className="card-rating-inline">★ {item.rating} <span>({item.reviewCount})</span></div>
             </div>
+            <div className="stretch-overage">+{fmt(priceDelta)} over your budget</div>
             <div className="card-divider" />
-            <div className="card-why stretch-callout compact">
-              <div className="why-label stretch-callout-label">Why it&apos;s worth it</div>
-              {whyCopy}
-            </div>
+            <motion.div className="card-why stretch-callout compact" layout>
+              {renderWhyCopy(item, variant, whyCopy, true)}
+            </motion.div>
             <div className="stretch-card-meta">
               {attributePills.map(pill => (
                 <span key={`${item.id}-${pill}`} className="stretch-mini-tag">{pill}</span>
               ))}
             </div>
-            <div className="card-footer compact">
-              <div className="card-delivery">Delivery in 5-7 days · {form.city}</div>
+            <div className="card-actions-row compact">
               <button
                 type="button"
-                className="card-cta"
+                className="card-action-btn"
+                onClick={() => { void handleShareProduct(item) }}
+              >
+                Share
+              </button>
+              <button
+                type="button"
+                className={`card-action-btn ${isCompared ? 'active-compare' : ''}`}
+                onClick={() => onCompareToggle(item.id)}
+              >
+                {isCompared ? 'In compare' : 'Compare'}
+              </button>
+              <button
+                type="button"
+                className="card-action-btn card-action-btn--cta"
                 onClick={() => {
                   if (userId) {
                     void trackProductClick(userId, sessionId ?? '', {
@@ -612,65 +783,83 @@ export function ResultsDisplay({
                 View piece →
               </button>
             </div>
+            <div className="card-delivery">Delivery in 5-7 days · {form.city}</div>
           </div>
-        </article>
+        </motion.article>
       )
     }
 
     // Primary card
     return (
-      <article
+      <motion.article
         key={item.id}
         className={`result-card ${index === 0 ? 'rank-1' : ''} ${isCompared ? 'in-compare' : ''} ${isWishlisted ? 'in-wishlist' : ''}`}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: index * 0.07, duration: 0.28 }}
+        whileHover={{ y: -3 }}
       >
         <div className={`rank-badge ${index === 0 ? 'rank-badge--hero' : 'rank-badge--outlined'}`}>
           {index === 0 ? '✦ Best Match' : `✦ #${index + 1}`}
         </div>
-        <div className="card-actions">
+        <div className="card-media">
+          <div className="card-img" aria-hidden="true" />
           <button
             type="button"
-            className={`compare-check ${isCompared ? 'checked' : ''}`}
-            title={isCompared ? 'Remove from compare' : 'Add to compare'}
-            onClick={() => onCompareToggle(item.id)}
-          >
-            {isCompared ? '☑' : '☐'}
-          </button>
-          <button
-            type="button"
-            className="card-wishlist-btn"
+            className={`card-bookmark-btn ${isWishlisted ? 'saved' : ''}`}
             onClick={() => { void handleSave(item) }}
-            title={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
+            title={isWishlisted ? 'Remove from saved' : 'Save item'}
+            aria-pressed={isWishlisted}
           >
-            {isWishlisted ? '❤️' : '🤍'}
+            <svg
+              className="card-bookmark-icon"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path d="M6 3.75h12A1.25 1.25 0 0 1 19.25 5v16.7a.25.25 0 0 1-.4.2L12 16.5l-6.85 5.4a.25.25 0 0 1-.4-.2V5A1.25 1.25 0 0 1 6 3.75Z" />
+            </svg>
           </button>
         </div>
-        <div className="card-img" aria-hidden="true" />
         <div className="card-body">
           <div className="card-head-row">
             <div className="card-brand">{item.brand}</div>
             <div className="card-score-pill">Fit {item.durabilityScore}/10</div>
           </div>
           <div className="card-name">{item.name}</div>
-          <div className="card-rating">★ {item.rating} · <span>{item.reviewCount} reviews</span></div>
-          <div className="card-price-block">
-            <div className="card-price">{fmt(item.price)}</div>
-            <div className="card-location-line">{form.city} · {item.inStock ? 'In stock' : 'Ships soon'}</div>
+          <div className="card-price-row">
+            <div className="card-price-block">
+              <div className="card-price">{fmt(item.price)}</div>
+              <div className="card-location-line">{form.city} · {item.inStock ? 'In stock' : 'Ships soon'}</div>
+            </div>
+            <div className="card-rating-inline">★ {item.rating} <span>({item.reviewCount})</span></div>
           </div>
           <div className="card-divider" />
-          <div className="card-why">
-            <div className="why-label">Why it fits you</div>
-            {whyCopy}
-          </div>
+          <motion.div className="card-why" layout>
+            {renderWhyCopy(item, variant, whyCopy)}
+          </motion.div>
           <div className="card-chip-row">
             {attributePills.map(pill => (
               <span key={`${item.id}-${pill}`} className="card-chip">{pill}</span>
             ))}
           </div>
-          <div className="card-footer">
-            <div className="card-delivery">Delivery in 5-7 days</div>
+          <div className="card-actions-row">
             <button
               type="button"
-              className="card-cta"
+              className="card-action-btn"
+              onClick={() => { void handleShareProduct(item) }}
+            >
+              Share
+            </button>
+            <button
+              type="button"
+              className={`card-action-btn ${isCompared ? 'active-compare' : ''}`}
+              onClick={() => onCompareToggle(item.id)}
+            >
+              {isCompared ? 'In compare' : 'Compare'}
+            </button>
+            <button
+              type="button"
+              className="card-action-btn card-action-btn--cta"
               onClick={() => {
                 if (userId) {
                   void trackProductClick(userId, sessionId ?? '', {
@@ -694,8 +883,9 @@ export function ResultsDisplay({
               View piece →
             </button>
           </div>
+          <div className="card-delivery">Delivery in 5-7 days</div>
         </div>
-      </article>
+      </motion.article>
     )
   }
 
