@@ -158,36 +158,67 @@ export async function callGroqChat(
 }
 
 /**
- * Sends a vision (multimodal) request to Groq and returns parsed JSON.
+ * Sends a vision request to Gemini 2.5 Flash and returns parsed JSON.
  * Used exclusively by the room analysis endpoint.
  */
-export async function callGroqVision(params: {
-  model: string
+export async function callGeminiVision(params: {
   systemPrompt: string
   userTextParts: string[]
   base64Images: string[]
   maxTokens?: number
 }): Promise<unknown> {
-  const imageContentParts = params.base64Images.map(dataUrl => ({
-    type: 'image_url',
-    image_url: { url: dataUrl },
-  }))
+  const apiKey = process.env.GEMINI_API_KEY ?? ''
+  if (!apiKey) throw new Error('GEMINI_API_KEY environment variable is not set')
 
-  const userContent: unknown[] = [
-    { type: 'text', text: params.userTextParts.join(' ') },
-    ...imageContentParts,
-  ]
-
-  const rawContent = await callGroqChat({
-    model: params.model,
-    messages: [
-      { role: 'system', content: params.systemPrompt },
-      { role: 'user',   content: userContent },
-    ],
-    temperature: 0.1,
-    maxTokens: params.maxTokens ?? 2048,
-    jsonMode: true,
+  const imageParts = params.base64Images.map(dataUrl => {
+    const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/)
+    if (!match) throw new Error('Invalid base64 image data URL')
+    return { inline_data: { mime_type: match[1], data: match[2] } }
   })
 
-  return JSON.parse(rawContent)
+  const body = {
+    system_instruction: { parts: [{ text: params.systemPrompt }] },
+    contents: [{
+      parts: [
+        { text: params.userTextParts.join(' ') },
+        ...imageParts,
+      ],
+    }],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      maxOutputTokens: params.maxTokens ?? 8192,
+      temperature: 0.1,
+    },
+  }
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30000),
+    }
+  )
+
+  if (!res.ok) {
+    const errorText = await res.text()
+    throw new Error(`Gemini API error ${res.status}: ${errorText}`)
+  }
+
+  const data = await res.json() as {
+    candidates: Array<{ content: { parts: Array<{ text: string }> } }>
+  }
+
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text
+  if (!text) throw new Error('Gemini returned an empty response')
+
+  // strip markdown code fences Gemini sometimes wraps around JSON
+  const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
+  try {
+    return JSON.parse(cleaned)
+  } catch (e) {
+    console.error('[callGeminiVision] JSON parse failed. Raw text:', cleaned.slice(0, 500))
+    throw e
+  }
 }

@@ -5,7 +5,7 @@
  */
 
 import { ROOM_ANALYSIS_SYSTEM_PROMPT } from '@/lib/ai/prompts/room-analysis-prompt'
-import { callGroqVision } from '@/lib/ai/groq-client'
+import { callGeminiVision } from '@/lib/ai/groq-client'
 
 export interface RoomAnalysisResult {
   wallColor: {
@@ -265,10 +265,9 @@ export async function analyzeRoomWithVision(
   apiKey: string,
   options: AnalyzeRoomOptions = {}
 ): Promise<RoomAnalysisResult> {
-  if (!apiKey) throw new Error('Missing GROQ_API_KEY')
+  if (!process.env.GEMINI_API_KEY) throw new Error('Missing GEMINI_API_KEY')
   if (base64Images.length === 0) throw new Error('At least one image is required')
 
-  // Use shared callGroqVision from lib/ai/groq-client
   const userTextParts = [
     `Selected furniture type: ${options.furnitureType ?? 'unspecified'}.`,
     `Declared room type: ${options.roomType ?? 'unspecified'}.`,
@@ -276,13 +275,11 @@ export async function analyzeRoomWithVision(
     'Analyze all provided room photos together and return the unified JSON RoomAnalysisResult object.',
   ]
 
-
-  const raw = await callGroqVision({
-    model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+  const raw = await callGeminiVision({
     systemPrompt: ROOM_ANALYSIS_SYSTEM_PROMPT,
     userTextParts,
     base64Images,
-    maxTokens: 2048,
+    maxTokens: 8192,
   })
 
   // callGroqVision already parses JSON, so raw is an object

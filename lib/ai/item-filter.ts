@@ -207,8 +207,8 @@ export function filterAndRankItems(availableItems: FurnitureItem[], ctx: UserCon
     ? (FURNITURE_CATEGORY_MAP[ctx.furnitureType] ?? [ctx.furnitureType])
     : null
 
-  // No lower floor — cheaper items are a value bonus, not a disqualification.
-  const budgetCeiling = ctx.budgetMax ?? ctx.budget
+  // Allow stretch candidates through; ranker assigns tiers and enforces caps
+  const budgetCeiling = ctx.budgetMax ?? Math.round(ctx.budget * 1.4)
 
   // Hard filters with per-item exclusion tracking
   let pool: FurnitureItem[] = []
