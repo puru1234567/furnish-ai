@@ -208,7 +208,7 @@ export function filterAndRankItems(availableItems: FurnitureItem[], ctx: UserCon
     : null
 
   // Allow stretch candidates through; ranker assigns tiers and enforces caps
-  const budgetCeiling = ctx.budgetMax ?? Math.round(ctx.budget * 1.4)
+  const budgetCeiling = ctx.budgetMax ?? Math.round(ctx.budget * 1.2)
 
   // Hard filters with per-item exclusion tracking
   let pool: FurnitureItem[] = []

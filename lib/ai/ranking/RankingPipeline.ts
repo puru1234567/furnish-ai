@@ -60,7 +60,7 @@ export class RankingPipeline {
     const primary: ItemScore[] = []
     const stretch: ItemScore[] = []
     const discarded: ItemScore[] = []
-    const MIN_SHORTLIST_COUNT = 4
+    const MIN_SHORTLIST_COUNT = 10
 
     for (const item of scored) {
       if (item.tier === 'primary') {
