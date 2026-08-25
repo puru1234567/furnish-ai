@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useCallback, useEffect, useMemo } from 'react'
+import { motion } from 'framer-motion'
 import type { FormData } from '../find-page-model'
-import type { RecommendedItem, RecommendationResponse, RoomAnalysis, ExclusionSummary, PipelineDebug } from '@/lib/types'
+import type { RecommendedItem, RecommendationResponse, RoomAnalysis } from '@/lib/types'
 import type { SortOption } from '@/lib/utils/sort-items'
 import { SORT_OPTIONS, sortRecommendations } from '@/lib/utils/sort-items'
 import { fmt } from '../find-page-utils'
@@ -67,7 +68,6 @@ export function ResultsDisplay({
   const [savedIds, setSavedIds] = useState<string[]>([])
   const [usefulnessRating, setUsefulnessRating] = useState<'yes' | 'partial' | 'no' | null>(null)
   const [feedbackReason, setFeedbackReason] = useState<string | null>(null)
-  const [exclusionOpen, setExclusionOpen] = useState(false)
   const [debugOpen, setDebugOpen] = useState(false)
   const [activeAdjustments, setActiveAdjustments] = useState<QuickAdjustmentId[]>([])
   const [draftAdjustments, setDraftAdjustments] = useState<QuickAdjustmentId[]>([])
@@ -76,26 +76,56 @@ export function ResultsDisplay({
   const [isPriceSliding, setIsPriceSliding] = useState(false)
   const [hasAppliedPriceCap, setHasAppliedPriceCap] = useState(false)
   const [isApplyingPrice, setIsApplyingPrice] = useState(false)
+  const [expandedWhyById, setExpandedWhyById] = useState<Record<string, boolean>>({})
 
   // Load saved results from Supabase
   useEffect(() => {
-    if (!userId) return
+    if (!userId) {
+      try {
+        const raw = localStorage.getItem('furnish_ai_local_saved_ids')
+        if (!raw) {
+          setSavedIds([])
+          return
+        }
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) {
+          setSavedIds(parsed.filter((id): id is string => typeof id === 'string'))
+          return
+        }
+        setSavedIds([])
+      } catch {
+        setSavedIds([])
+      }
+      return
+    }
+
     getSavedResults(userId).then(results => {
       setSavedIds(results.map(r => r.product_id))
     })
   }, [userId])
 
   const handleSave = useCallback((item: RecommendedItem) => {
-    if (!userId) return
-
     const alreadySaved = savedIds.includes(item.id)
+    const nextSavedIds = alreadySaved
+      ? savedIds.filter(id => id !== item.id)
+      : [...savedIds, item.id]
+
+    setSavedIds(nextSavedIds)
+
+    if (!userId) {
+      try {
+        localStorage.setItem('furnish_ai_local_saved_ids', JSON.stringify(nextSavedIds))
+      } catch {
+        // Ignore storage failures and keep in-memory toggle.
+      }
+      return
+    }
+
     if (alreadySaved) {
-      setSavedIds(prev => prev.filter(id => id !== item.id))
       void unsaveResult(userId, item.id)
       return
     }
 
-    setSavedIds(prev => [...prev, item.id])
     void saveResult(userId, sessionId ?? '', {
       product_id: item.id,
       product_name: item.name,
@@ -273,12 +303,6 @@ export function ResultsDisplay({
   const compareItemObjects = results.filter(r => compareItems.includes(r.id))
   const activeSortLabel = SORT_OPTIONS.find(o => o.value === sortBy)?.label ?? 'Best Match'
   const wishlistCount = savedIds.length
-  const storySignals = [
-    form.roomType,
-    fmt(form.budget),
-    roomAnalysis?.spatialConstraints?.[0],
-    selectedContextualCount > 0 ? `${selectedContextualCount} answer signals` : undefined,
-  ].filter(Boolean) as string[]
   const leadingInsight = meta.contextInsights[0] ?? meta.flaggedIssues[0] ?? null
 
   const cleanSignal = useCallback((value: string) => {
@@ -290,19 +314,77 @@ export function ResultsDisplay({
     return normalized.charAt(0).toUpperCase() + normalized.slice(1)
   }, [])
 
+  const humanizeDeterministicBreakdown = useCallback((raw: string) => {
+    const entries = raw
+      .split('|')
+      .map((part) => part.trim())
+      .map((part) => {
+        const match = part.match(/^([a-z_]+):\s*(-?\d+)$/i)
+        if (!match) return null
+        return { key: match[1].toLowerCase(), score: Number(match[2]) }
+      })
+      .filter((entry): entry is { key: string; score: number } => entry !== null)
+
+    if (entries.length < 4) {
+      return raw
+    }
+
+    const labelMap: Record<string, string> = {
+      pain_point: 'solving your pain-point concerns',
+      room_compact: 'compact-room compatibility',
+      room_needs: 'alignment with your room needs',
+      contextual: 'your stated preferences',
+      existing_fit: 'blending with existing furniture',
+      style_match: 'style compatibility',
+      size_fit: 'size fit for your space',
+      price_tier: 'budget alignment',
+      use_case: 'everyday use suitability',
+      social_proof: 'review and rating confidence',
+    }
+
+    const positive = entries
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3)
+      .map((entry) => labelMap[entry.key] ?? cleanSignal(entry.key))
+
+    if (positive.length === 0) {
+      return 'Balanced fit across room, style, and budget signals.'
+    }
+
+    if (positive.length === 1) {
+      return `Strong on ${positive[0]}.`
+    }
+
+    if (positive.length === 2) {
+      return `Strong on ${positive[0]} and ${positive[1]}.`
+    }
+
+    return `Strong on ${positive[0]}, ${positive[1]}, and ${positive[2]}.`
+  }, [cleanSignal])
+
   const buildWhyCopy = useCallback((item: RecommendedItem, variant: 'primary' | 'stretch') => {
     const baseMaterial = item.material.split('(')[0].trim()
     const durabilitySentence = `Durability score: ${item.durabilityScore}/10.`
+    const rawReason = (item.whyItFits ?? '').trim()
+    const isTechnicalBreakdown = /^([a-z_]+:\s*-?\d+)(\s*\|\s*[a-z_]+:\s*-?\d+)+$/i.test(rawReason)
+    const modelReason = isTechnicalBreakdown
+      ? humanizeDeterministicBreakdown(rawReason)
+      : rawReason
 
     if (variant === 'stretch') {
       const premiumSentence = item.durabilityScore >= 8
         ? 'Higher build quality than core picks.'
         : `Upgraded ${baseMaterial.toLowerCase()} construction.`
-      return `${premiumSentence} Material: ${baseMaterial}. ${item.warrantyYears}-year warranty. ${durabilitySentence}`
+      return modelReason.length > 0
+        ? `${modelReason} ${premiumSentence} ${item.warrantyYears}-year warranty. ${durabilitySentence}`
+        : `${premiumSentence} Material: ${baseMaterial}. ${item.warrantyYears}-year warranty. ${durabilitySentence}`
     }
 
-    return `Material: ${baseMaterial}. ${item.warrantyYears}-year warranty. ${durabilitySentence}`
-  }, [])
+    return modelReason.length > 0
+      ? `${modelReason} ${item.warrantyYears}-year warranty. ${durabilitySentence}`
+      : `Material: ${baseMaterial}. ${item.warrantyYears}-year warranty. ${durabilitySentence}`
+  }, [humanizeDeterministicBreakdown])
 
   const truncatePill = useCallback((value: string) => {
     return value.length > 18 ? `${value.slice(0, 17).trimEnd()}…` : value
@@ -432,6 +514,57 @@ export function ResultsDisplay({
     })
   }, [form])
 
+  const handleShareProduct = useCallback(async (item: RecommendedItem) => {
+    const shareText = `Check out ${item.name} on FurnishAI`;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: item.name,
+          text: shareText,
+          url: item.productUrl,
+        })
+        return
+      }
+      await navigator.clipboard.writeText(`${shareText}\n${item.productUrl}`)
+    } catch {
+      // Swallow share/copy failures to avoid interrupting product exploration flow.
+    }
+  }, [])
+
+  const toggleWhyExpanded = useCallback((itemId: string) => {
+    setExpandedWhyById((current) => ({
+      ...current,
+      [itemId]: !current[itemId],
+    }))
+  }, [])
+
+  const renderWhyCopy = useCallback((item: RecommendedItem, variant: 'primary' | 'stretch', whyCopy: string, compact = false) => {
+    const expanded = Boolean(expandedWhyById[item.id])
+    const threshold = compact ? 100 : 120
+    const shouldCollapse = whyCopy.length > threshold
+    const visibleCopy = shouldCollapse && !expanded
+      ? `${whyCopy.slice(0, threshold).trimEnd()}...`
+      : whyCopy
+
+    return (
+      <>
+        <div className={`why-label ${variant === 'stretch' ? 'stretch-callout-label' : ''}`}>
+          {variant === 'stretch' ? "Why it's worth it" : 'Why it fits you'}
+        </div>
+        <p className="card-why-copy">{visibleCopy}</p>
+        {shouldCollapse && (
+          <button
+            type="button"
+            className="card-why-toggle"
+            onClick={() => toggleWhyExpanded(item.id)}
+          >
+            {expanded ? 'Show less' : 'Read more'}
+          </button>
+        )}
+      </>
+    )
+  }, [expandedWhyById, toggleWhyExpanded])
+
   const renderResultCard = (
     item: RecommendedItem,
     index: number,
@@ -450,62 +583,77 @@ export function ResultsDisplay({
       if (!compactStretch) {
         // Promoted stretch — full grid card
         return (
-          <article
+          <motion.article
             key={item.id}
             className={`result-card stretch-card promoted-stretch-card ${isCompared ? 'in-compare' : ''} ${isWishlisted ? 'in-wishlist' : ''}`}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: index * 0.07, duration: 0.28 }}
+            whileHover={{ y: -3 }}
             style={{
               ...(gridSpan > 1 ? { gridColumn: `span ${gridSpan}` } : {}),
             }}
           >
             <div className="rank-badge stretch-badge">↑ Stretch Pick</div>
-            <div className="card-actions">
+            <div className="card-media">
+              <div className="card-img" aria-hidden="true" />
               <button
                 type="button"
-                className={`compare-check ${isCompared ? 'checked' : ''}`}
-                title={isCompared ? 'Remove from compare' : 'Add to compare'}
-                onClick={() => onCompareToggle(item.id)}
-              >
-                {isCompared ? '☑' : '☐'}
-              </button>
-              <button
-                type="button"
-                className="card-wishlist-btn"
+                className={`card-bookmark-btn ${isWishlisted ? 'saved' : ''}`}
                 onClick={() => { void handleSave(item) }}
-                title={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
+                title={isWishlisted ? 'Remove from saved' : 'Save item'}
+                aria-pressed={isWishlisted}
               >
-                {isWishlisted ? '❤️' : '🤍'}
+                <svg
+                  className="card-bookmark-icon"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path d="M6 3.75h12A1.25 1.25 0 0 1 19.25 5v16.7a.25.25 0 0 1-.4.2L12 16.5l-6.85 5.4a.25.25 0 0 1-.4-.2V5A1.25 1.25 0 0 1 6 3.75Z" />
+                </svg>
               </button>
             </div>
-            <div className="card-img" aria-hidden="true" />
             <div className="card-body">
               <div className="card-head-row">
                 <div className="card-brand">{item.brand}</div>
                 <div className="card-score-pill">Fit {item.durabilityScore}/10</div>
               </div>
               <div className="card-name">{item.name}</div>
-              <div className="card-rating">★ {item.rating} · <span>{item.reviewCount} reviews</span></div>
-              <div className="stretch-price-row">
+              <div className="card-price-row stretch-price-row">
                 <div className="stretch-price-stack">
                   <div className="card-price">{fmt(item.price)}</div>
                   <div className="card-location-line">{form.city} · {item.inStock ? 'In stock' : 'Ships soon'}</div>
                 </div>
-                <div className="stretch-overage">+{fmt(priceDelta)} over your budget</div>
+                <div className="card-rating-inline">★ {item.rating} <span>({item.reviewCount})</span></div>
               </div>
+              <div className="stretch-overage">+{fmt(priceDelta)} over your budget</div>
               <div className="card-divider" />
-              <div className="card-why stretch-callout">
-                <div className="why-label stretch-callout-label">Why it&apos;s worth it</div>
-                {whyCopy}
-              </div>
+              <motion.div className="card-why stretch-callout" layout>
+                {renderWhyCopy(item, variant, whyCopy)}
+              </motion.div>
               <div className="card-chip-row">
                 {attributePills.map(pill => (
                   <span key={`${item.id}-${pill}`} className="card-chip">{pill}</span>
                 ))}
               </div>
-              <div className="card-footer">
-                <div className="card-delivery">Delivery in 5-7 days · {form.city}</div>
+              <div className="card-actions-row">
                 <button
                   type="button"
-                  className="card-cta"
+                  className="card-action-btn"
+                  onClick={() => { void handleShareProduct(item) }}
+                >
+                  Share
+                </button>
+                <button
+                  type="button"
+                  className={`card-action-btn ${isCompared ? 'active-compare' : ''}`}
+                  onClick={() => onCompareToggle(item.id)}
+                >
+                  {isCompared ? 'In compare' : 'Compare'}
+                </button>
+                <button
+                  type="button"
+                  className="card-action-btn card-action-btn--cta"
                   onClick={() => {
                     if (userId) {
                       void trackProductClick(userId, sessionId ?? '', {
@@ -529,66 +677,82 @@ export function ResultsDisplay({
                   View piece →
                 </button>
               </div>
+              <div className="card-delivery">Delivery in 5-7 days · {form.city}</div>
             </div>
-          </article>
+          </motion.article>
         )
       }
 
       // Compact stretch card
       return (
-        <article
+        <motion.article
           key={item.id}
           className={`result-card stretch-card stretch-card-compact ${isCompared ? 'in-compare' : ''} ${isWishlisted ? 'in-wishlist' : ''}`}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: index * 0.07, duration: 0.28 }}
+          whileHover={{ y: -3 }}
         >
           <div className="rank-badge stretch-badge">↑ Stretch Pick</div>
-          <div className="card-actions">
+          <div className="card-media">
+            <div className="card-img stretch-card-media" aria-hidden="true" />
             <button
               type="button"
-              className={`compare-check ${isCompared ? 'checked' : ''}`}
-              title={isCompared ? 'Remove from compare' : 'Add to compare'}
-              onClick={() => onCompareToggle(item.id)}
-            >
-              {isCompared ? '☑' : '☐'}
-            </button>
-            <button
-              type="button"
-              className="card-wishlist-btn"
+              className={`card-bookmark-btn ${isWishlisted ? 'saved' : ''}`}
               onClick={() => { void handleSave(item) }}
-              title={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
+              title={isWishlisted ? 'Remove from saved' : 'Save item'}
+              aria-pressed={isWishlisted}
             >
-              {isWishlisted ? '❤️' : '🤍'}
+              <svg
+                className="card-bookmark-icon"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="M6 3.75h12A1.25 1.25 0 0 1 19.25 5v16.7a.25.25 0 0 1-.4.2L12 16.5l-6.85 5.4a.25.25 0 0 1-.4-.2V5A1.25 1.25 0 0 1 6 3.75Z" />
+              </svg>
             </button>
           </div>
-          <div className="card-img stretch-card-media" aria-hidden="true" />
           <div className="card-body stretch-card-body">
             <div className="card-head-row">
               <div className="card-brand">{item.brand}</div>
               <div className="card-score-pill">Fit {item.durabilityScore}/10</div>
             </div>
             <div className="card-name">{item.name}</div>
-            <div className="card-rating">★ {item.rating} · <span>{item.reviewCount} reviews</span></div>
-            <div className="stretch-price-row">
+            <div className="card-price-row stretch-price-row">
               <div className="stretch-price-stack">
                 <div className="card-price">{fmt(item.price)}</div>
                 <div className="card-location-line">{form.city} · {item.inStock ? 'In stock' : 'Ships soon'}</div>
               </div>
-              <div className="stretch-overage">+{fmt(priceDelta)} over your budget</div>
+              <div className="card-rating-inline">★ {item.rating} <span>({item.reviewCount})</span></div>
             </div>
+            <div className="stretch-overage">+{fmt(priceDelta)} over your budget</div>
             <div className="card-divider" />
-            <div className="card-why stretch-callout compact">
-              <div className="why-label stretch-callout-label">Why it&apos;s worth it</div>
-              {whyCopy}
-            </div>
+            <motion.div className="card-why stretch-callout compact" layout>
+              {renderWhyCopy(item, variant, whyCopy, true)}
+            </motion.div>
             <div className="stretch-card-meta">
               {attributePills.map(pill => (
                 <span key={`${item.id}-${pill}`} className="stretch-mini-tag">{pill}</span>
               ))}
             </div>
-            <div className="card-footer compact">
-              <div className="card-delivery">Delivery in 5-7 days · {form.city}</div>
+            <div className="card-actions-row compact">
               <button
                 type="button"
-                className="card-cta"
+                className="card-action-btn"
+                onClick={() => { void handleShareProduct(item) }}
+              >
+                Share
+              </button>
+              <button
+                type="button"
+                className={`card-action-btn ${isCompared ? 'active-compare' : ''}`}
+                onClick={() => onCompareToggle(item.id)}
+              >
+                {isCompared ? 'In compare' : 'Compare'}
+              </button>
+              <button
+                type="button"
+                className="card-action-btn card-action-btn--cta"
                 onClick={() => {
                   if (userId) {
                     void trackProductClick(userId, sessionId ?? '', {
@@ -612,65 +776,83 @@ export function ResultsDisplay({
                 View piece →
               </button>
             </div>
+            <div className="card-delivery">Delivery in 5-7 days · {form.city}</div>
           </div>
-        </article>
+        </motion.article>
       )
     }
 
     // Primary card
     return (
-      <article
+      <motion.article
         key={item.id}
         className={`result-card ${index === 0 ? 'rank-1' : ''} ${isCompared ? 'in-compare' : ''} ${isWishlisted ? 'in-wishlist' : ''}`}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: index * 0.07, duration: 0.28 }}
+        whileHover={{ y: -3 }}
       >
         <div className={`rank-badge ${index === 0 ? 'rank-badge--hero' : 'rank-badge--outlined'}`}>
           {index === 0 ? '✦ Best Match' : `✦ #${index + 1}`}
         </div>
-        <div className="card-actions">
+        <div className="card-media">
+          <div className="card-img" aria-hidden="true" />
           <button
             type="button"
-            className={`compare-check ${isCompared ? 'checked' : ''}`}
-            title={isCompared ? 'Remove from compare' : 'Add to compare'}
-            onClick={() => onCompareToggle(item.id)}
-          >
-            {isCompared ? '☑' : '☐'}
-          </button>
-          <button
-            type="button"
-            className="card-wishlist-btn"
+            className={`card-bookmark-btn ${isWishlisted ? 'saved' : ''}`}
             onClick={() => { void handleSave(item) }}
-            title={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
+            title={isWishlisted ? 'Remove from saved' : 'Save item'}
+            aria-pressed={isWishlisted}
           >
-            {isWishlisted ? '❤️' : '🤍'}
+            <svg
+              className="card-bookmark-icon"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path d="M6 3.75h12A1.25 1.25 0 0 1 19.25 5v16.7a.25.25 0 0 1-.4.2L12 16.5l-6.85 5.4a.25.25 0 0 1-.4-.2V5A1.25 1.25 0 0 1 6 3.75Z" />
+            </svg>
           </button>
         </div>
-        <div className="card-img" aria-hidden="true" />
         <div className="card-body">
           <div className="card-head-row">
             <div className="card-brand">{item.brand}</div>
             <div className="card-score-pill">Fit {item.durabilityScore}/10</div>
           </div>
           <div className="card-name">{item.name}</div>
-          <div className="card-rating">★ {item.rating} · <span>{item.reviewCount} reviews</span></div>
-          <div className="card-price-block">
-            <div className="card-price">{fmt(item.price)}</div>
-            <div className="card-location-line">{form.city} · {item.inStock ? 'In stock' : 'Ships soon'}</div>
+          <div className="card-price-row">
+            <div className="card-price-block">
+              <div className="card-price">{fmt(item.price)}</div>
+              <div className="card-location-line">{form.city} · {item.inStock ? 'In stock' : 'Ships soon'}</div>
+            </div>
+            <div className="card-rating-inline">★ {item.rating} <span>({item.reviewCount})</span></div>
           </div>
           <div className="card-divider" />
-          <div className="card-why">
-            <div className="why-label">Why it fits you</div>
-            {whyCopy}
-          </div>
+          <motion.div className="card-why" layout>
+            {renderWhyCopy(item, variant, whyCopy)}
+          </motion.div>
           <div className="card-chip-row">
             {attributePills.map(pill => (
               <span key={`${item.id}-${pill}`} className="card-chip">{pill}</span>
             ))}
           </div>
-          <div className="card-footer">
-            <div className="card-delivery">Delivery in 5-7 days</div>
+          <div className="card-actions-row">
             <button
               type="button"
-              className="card-cta"
+              className="card-action-btn"
+              onClick={() => { void handleShareProduct(item) }}
+            >
+              Share
+            </button>
+            <button
+              type="button"
+              className={`card-action-btn ${isCompared ? 'active-compare' : ''}`}
+              onClick={() => onCompareToggle(item.id)}
+            >
+              {isCompared ? 'In compare' : 'Compare'}
+            </button>
+            <button
+              type="button"
+              className="card-action-btn card-action-btn--cta"
               onClick={() => {
                 if (userId) {
                   void trackProductClick(userId, sessionId ?? '', {
@@ -694,22 +876,23 @@ export function ResultsDisplay({
               View piece →
             </button>
           </div>
+          <div className="card-delivery">Delivery in 5-7 days</div>
         </div>
-      </article>
+      </motion.article>
     )
   }
 
   return (
     <>
       <style>{`
-        .exclusion-panel {
+        .debug-panel {
           margin: 0 0 16px;
           border: 1px solid rgba(0,0,0,0.08);
           border-radius: 8px;
           background: rgba(0,0,0,0.02);
           overflow: hidden;
         }
-        .exclusion-panel-toggle {
+        .debug-panel-toggle {
           width: 100%;
           display: flex;
           justify-content: space-between;
@@ -721,17 +904,17 @@ export function ResultsDisplay({
           text-align: left;
           gap: 8px;
         }
-        .exclusion-panel-count {
+        .debug-panel-count {
           font-size: 12px;
           color: #888;
           font-weight: 500;
         }
-        .exclusion-panel-chevron {
+        .debug-panel-chevron {
           font-size: 10px;
           color: #aaa;
           flex-shrink: 0;
         }
-        .exclusion-panel-list {
+        .debug-panel-list {
           list-style: none;
           margin: 0;
           padding: 0 14px 10px;
@@ -739,7 +922,7 @@ export function ResultsDisplay({
           flex-direction: column;
           gap: 4px;
         }
-        .exclusion-panel-list li {
+        .debug-panel-list li {
           font-size: 12px;
           color: #999;
           padding: 2px 0;
@@ -952,26 +1135,14 @@ export function ResultsDisplay({
 
         <main className="results-main">
           <div className="results-header-shell">
-            <div className="results-context-bar">
-              <div className="results-context-copy">
+            <div className="results-header">
+              <div className="results-header-meta">
                 <div className="results-context-line">
                   {activeResults.length} matches · {form.roomType} · {form.city} · {hasStretchResults
                     ? `${fmt(form.budget)} budget + stretch to ${fmt(form.budgetMax)}`
                     : `under ${fmt(form.budget)}`}
                 </div>
                 <div className="results-context-note">{leadingInsight ?? meta.summary}</div>
-              </div>
-              <div className="results-signal-row">
-                {storySignals.map(signal => (
-                  <span key={signal} className="results-signal-pill">{signal}</span>
-                ))}
-              </div>
-            </div>
-
-            <div className="results-header">
-              <div className="results-header-meta">
-                <div className="results-section-title">Compare, save, or reshape the shortlist</div>
-                <div className="results-section-copy">Keep the decision surface tight while adjusting what the room can support.</div>
               </div>
               <div className="results-controls">
                 <div className="sort-dropdown-wrap">
@@ -1014,58 +1185,22 @@ export function ResultsDisplay({
               <button type="button" className="compare-mode-exit" onClick={onCompareModeToggle}>Exit</button>
             </div>
           )}
-          {/* Exclusion summary panel */}
-          {meta.exclusionSummary && meta.exclusionSummary.total > 0 && (
-            <div className="exclusion-panel">
-              <button
-                type="button"
-                className="exclusion-panel-toggle"
-                onClick={() => setExclusionOpen(o => !o)}
-                aria-expanded={exclusionOpen}
-              >
-                <span className="exclusion-panel-count">{meta.exclusionSummary.total} items were filtered out for you</span>
-                <span className="exclusion-panel-chevron">{exclusionOpen ? '▴' : '▾'}</span>
-              </button>
-              {exclusionOpen && (
-                <ul className="exclusion-panel-list">
-                  {meta.exclusionSummary.byReason.budget > 0 && (
-                    <li>{meta.exclusionSummary.byReason.budget} item{meta.exclusionSummary.byReason.budget !== 1 ? 's' : ''}: over your budget</li>
-                  )}
-                  {meta.exclusionSummary.byReason.city > 0 && (
-                    <li>{meta.exclusionSummary.byReason.city} item{meta.exclusionSummary.byReason.city !== 1 ? 's' : ''}: not available in your city</li>
-                  )}
-                  {meta.exclusionSummary.byReason.outOfStock > 0 && (
-                    <li>{meta.exclusionSummary.byReason.outOfStock} item{meta.exclusionSummary.byReason.outOfStock !== 1 ? 's' : ''}: currently out of stock</li>
-                  )}
-                  {meta.exclusionSummary.byReason.material > 0 && (
-                    <li>{meta.exclusionSummary.byReason.material} item{meta.exclusionSummary.byReason.material !== 1 ? 's' : ''}: material you asked to avoid</li>
-                  )}
-                  {meta.exclusionSummary.byReason.mustHave > 0 && (
-                    <li>{meta.exclusionSummary.byReason.mustHave} item{meta.exclusionSummary.byReason.mustHave !== 1 ? 's' : ''}: missing a feature you need</li>
-                  )}
-                  {meta.exclusionSummary.byReason.size > 0 && (
-                    <li>{meta.exclusionSummary.byReason.size} item{meta.exclusionSummary.byReason.size !== 1 ? 's' : ''}: too wide for your wall</li>
-                  )}
-                </ul>
-              )}
-            </div>
-          )}
           {/* Pipeline debug panel — dev/troubleshooting tool */}
           {meta.pipelineDebug && (
-            <div className="exclusion-panel" style={{ marginBottom: 12 }}>
+            <div className="debug-panel" style={{ marginBottom: 12 }}>
               <button
                 type="button"
-                className="exclusion-panel-toggle"
+                className="debug-panel-toggle"
                 onClick={() => setDebugOpen(o => !o)}
                 aria-expanded={debugOpen}
               >
-                <span className="exclusion-panel-count" style={{ fontFamily: 'monospace' }}>
+                <span className="debug-panel-count" style={{ fontFamily: 'monospace' }}>
                   🔬 Pipeline: {meta.pipelineDebug.afterHardFilters} eligible → {meta.pipelineDebug.primary}P + {meta.pipelineDebug.stretch}S / {meta.pipelineDebug.discarded} discarded
                 </span>
-                <span className="exclusion-panel-chevron">{debugOpen ? '▴' : '▾'}</span>
+                <span className="debug-panel-chevron">{debugOpen ? '▴' : '▾'}</span>
               </button>
               {debugOpen && (
-                <ul className="exclusion-panel-list" style={{ fontFamily: 'monospace', fontSize: 11 }}>
+                <ul className="debug-panel-list" style={{ fontFamily: 'monospace', fontSize: 11 }}>
                   <li>📦 Repository total: {meta.pipelineDebug.totalInRepository}</li>
                   <li>🗑️ Rejected (pruned before score): {meta.pipelineDebug.rejectedPruned} → {meta.pipelineDebug.afterRejectionPrune} remaining</li>
                   <li>✅ After hard filters: {meta.pipelineDebug.afterHardFilters}</li>
@@ -1193,41 +1328,34 @@ export function ResultsDisplay({
         </main>
       </div>
 
-      <div className="compare-fab">
-        {compareItems.length === 1 ? (
-          <div className="compare-fab-message">
-            ⊡ Select one more to start comparing
-          </div>
-        ) : compareItems.length >= 2 ? (
-          <div className="compare-fab-with-clear">
-            <button
-              type="button"
-              className="compare-fab-btn compare-fab-active"
-              onClick={() => setShowCompareView(true)}
-            >
-              ⊡ Compare ({compareItems.length} selected) →
-            </button>
-            <button
-              type="button"
-              className="compare-fab-clear"
-              onClick={handleClearAllCompare}
-              title="Clear all selections"
-              aria-label="Clear selected items"
-            >
-              ✕
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            className="compare-fab-btn"
-            onClick={onCompareModeToggle}
-            title="Turn on compare mode"
-          >
-            {compareMode ? 'Select pieces to compare' : 'Turn on compare mode'}
-          </button>
-        )}
-      </div>
+      {compareItems.length > 0 && (
+        <div className="compare-fab">
+          {compareItems.length === 1 ? (
+            <div className="compare-fab-message">
+              ⊡ Select one more to start comparing
+            </div>
+          ) : (
+            <div className="compare-fab-with-clear">
+              <button
+                type="button"
+                className="compare-fab-btn compare-fab-active"
+                onClick={() => setShowCompareView(true)}
+              >
+                ⊡ Compare ({compareItems.length} selected) →
+              </button>
+              <button
+                type="button"
+                className="compare-fab-clear"
+                onClick={handleClearAllCompare}
+                title="Clear all selections"
+                aria-label="Clear selected items"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {mobileSidebarOpen && (
         <div
