@@ -1,0 +1,3 @@
+import type { ImportValidationError } from '@/lib/vendor/imports'
+
+export function ImportErrorTable({ errors }: { errors: ImportValidationError[] }) { if (!errors.length) return null; return <div className="import-error-table-wrap"><table className="import-error-table"><caption>Validation errors</caption><thead><tr><th>Row</th><th>Column</th><th>Issue</th><th>Value</th></tr></thead><tbody>{errors.map((error, index) => <tr key={`${error.rowNumber}-${error.column}-${index}`}><td>{error.rowNumber}</td><td><code>{error.column}</code></td><td><strong>{error.message}</strong><small>{error.code}</small></td><td>{error.value || 'Empty'}</td></tr>)}</tbody></table></div> }

@@ -1,0 +1,5 @@
+import type { ApprovalHistoryEntry } from '@/lib/vendor/catalog'
+
+export function ChangeHistory({ history }: { history: ApprovalHistoryEntry[] }) { return <section className="approval-history-panel"><div className="approval-section-heading"><div><p className="vendor-eyebrow">Audit trail</p><h2>Approval history</h2></div><span>{history.length} events</span></div><ApprovalHistoryList history={history} /></section> }
+
+function ApprovalHistoryList({ history }: { history: ApprovalHistoryEntry[] }) { return <div className="approval-history-list">{history.length ? history.map((entry) => <div key={entry.id}><span>{new Date(entry.changedAt).toLocaleDateString('en-IN')}</span><strong>{entry.status.replaceAll('_', ' ')}</strong><small>{entry.changedBy}</small></div>) : <p className="approval-empty">No history yet.</p>}</div> }

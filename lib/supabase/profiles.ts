@@ -30,7 +30,7 @@ export async function upsertOwnProfileName(
   const trimmedName = fullName.trim()
   if (!trimmedName) return
 
-  await supabase
+  const { error } = await supabase
     .from('profiles')
     .upsert(
       {
@@ -42,6 +42,8 @@ export async function upsertOwnProfileName(
       },
       { onConflict: 'id' }
     )
+
+  if (error) throw error
 }
 
 function normalizeDisplayName(value: unknown): string | null {

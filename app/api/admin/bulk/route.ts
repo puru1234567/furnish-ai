@@ -1,0 +1,5 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createBulkJob } from '@/lib/admin/bulk-operations'
+import { rateLimit } from '@/lib/security/rate-limit'
+
+export async function POST(request: NextRequest) { const limited = rateLimit(request, 'admin-bulk-submit', 10, 60_000); if (limited) return NextResponse.json({ error: 'Too many bulk operation submissions. Try again later.' }, { status: 429, headers: { 'Retry-After': String(limited.retryAfter) } }); try { const body = await request.json(); return NextResponse.json(await createBulkJob(body)) } catch (error) { if (error instanceof Error && error.message === 'ADMIN_FORBIDDEN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 }); if (error instanceof Error && error.message === 'REASON_REQUIRED') return NextResponse.json({ error: 'A reason is required.' }, { status: 400 }); if (error instanceof Error && error.message === 'INVALID_BULK_REQUEST') return NextResponse.json({ error: 'Select at least one record and provide a reason.' }, { status: 400 }); return NextResponse.json({ error: 'Unable to start bulk operation.' }, { status: 500 }) } }

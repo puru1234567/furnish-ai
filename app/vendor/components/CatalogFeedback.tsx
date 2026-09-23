@@ -1,0 +1,1 @@
+export function CatalogFeedback({ type, children }: { type: 'error' | 'loading'; children: string }) { return <div className={`catalog-feedback catalog-feedback-${type}`} role={type === 'error' ? 'alert' : 'status'}>{children}</div> }

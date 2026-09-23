@@ -1,0 +1,5 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { getUserRole } from '@/lib/supabase/roles'
+
+export async function POST(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) { const supabase = await createClient(); const { data: { user } } = await supabase.auth.getUser(); if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 }); const role = getUserRole(user); if (role !== 'vendor' && role !== 'admin') return NextResponse.json({ error: 'Vendor access required' }, { status: 403 }); const { id } = await params; return NextResponse.json({ error: 'Synchronization adapter and authentication contract are not configured.', code: 'INTEGRATION_CONTRACT_NOT_CONFIGURED', integrationId: id, retriable: false }, { status: 501 }) }

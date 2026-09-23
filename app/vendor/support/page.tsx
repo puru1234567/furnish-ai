@@ -1,0 +1,11 @@
+'use client'
+
+import Link from 'next/link'
+import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { getUserRole } from '@/lib/supabase/roles'
+import { type SupportTicket, vendorSupportService } from '@/lib/vendor/support'
+import { CatalogFeedback } from '../components/CatalogFeedback'
+import { SupportStatusBadge } from '../components/SupportStatusBadge'
+
+export default function VendorSupportPage() { const [tickets, setTickets] = useState<SupportTicket[]>([]); const [loading, setLoading] = useState(true); useEffect(() => { void createClient().auth.getUser().then(async ({ data: { user } }) => { if (user && (getUserRole(user) === 'vendor' || getUserRole(user) === 'admin')) setTickets(await vendorSupportService.list(user.id)); setLoading(false) }) }, []); if (loading) return <main className="vendor-page"><div className="operations-shell"><CatalogFeedback type="loading">Loading support tickets...</CatalogFeedback></div></main>; return <main className="vendor-page"><header className="vendor-header"><Link href="/vendor" className="logo logo-active">Furnish<span>AI</span></Link><nav><Link href="/vendor" className="btn-skip">Portal</Link><span className="vendor-header-label">Support</span></nav></header><div className="operations-shell"><div className="operations-heading"><div><p className="vendor-eyebrow">Vendor operations</p><h1>Support</h1><p>Ask the marketplace team about onboarding, catalog, approvals, inventory, or pricing.</p></div><Link href="/vendor/support/new" className="btn-next">Create ticket</Link></div>{tickets.length ? <div className="support-ticket-list">{tickets.map((ticket) => <Link href={`/vendor/support/${ticket.id}`} className="support-ticket-row" key={ticket.id}><div><strong>{ticket.subject}</strong><span>{ticket.category} · {ticket.priority} priority · {ticket.messages.length} messages</span></div><div><SupportStatusBadge status={ticket.status} /><small>{new Date(ticket.updatedAt).toLocaleDateString('en-IN')}</small></div></Link>)}</div> : <div className="operations-empty"><h2>No support tickets</h2><p>Create a ticket when you need help from the marketplace team.</p><Link href="/vendor/support/new" className="btn-next">Create ticket</Link></div>}</div></main> }

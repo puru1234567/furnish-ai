@@ -1,0 +1,3 @@
+import Link from 'next/link'
+
+export function CatalogEmptyState({ filtered = false }: { filtered?: boolean }) { return <div className="catalog-empty"><span className="catalog-empty-mark">+</span><h2>{filtered ? 'No products match these filters' : 'Your catalog starts here'}</h2><p>{filtered ? 'Try another search or clear the filters to see more products.' : 'Add your first product to begin building a catalog for review.'}</p>{!filtered ? <Link href="/vendor/products/new" className="btn-next">Add product</Link> : null}</div> }

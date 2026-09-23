@@ -1,22 +1,36 @@
 import Link from 'next/link'
+import { getAdminDashboard, type AdminDashboardData, type DashboardMetric } from '@/lib/admin/dashboard'
 
-export default function AdminPage() {
-  return (
-    <main className="min-h-screen px-6 py-24" style={{ backgroundColor: 'var(--cream)' }}>
-      <div className="mx-auto max-w-5xl rounded-[36px] border border-[rgba(181,138,82,0.16)] bg-[rgba(255,253,249,0.88)] p-10 shadow-[0_28px_70px_rgba(28,25,23,0.08)]">
-        <p className="text-xs uppercase tracking-[0.18em] text-[var(--terracotta)]">Admin console</p>
-        <h1 className="mt-4 text-5xl text-[var(--charcoal)]" style={{ fontFamily: 'var(--font-serif)' }}>
-          Admin entry point is protected and ready.
-        </h1>
-        <p className="mt-6 max-w-2xl text-sm leading-7 text-[var(--warm-grey)]">
-          Only admin-role users can reach this route. The console shell is in place so the next iteration can add vendor approvals, catalog moderation, and user management without reopening the auth architecture.
-        </p>
+const metricGroups = [
+  { key: 'vendors', label: 'Vendors', items: [['total', 'Total vendors'], ['active', 'Active vendors'], ['pendingOnboarding', 'Pending onboarding'], ['suspended', 'Suspended vendors'], ['inactive', 'Inactive vendors'], ['requiringAction', 'Requiring action']] },
+  { key: 'products', label: 'Products', items: [['total', 'Total products'], ['pendingApproval', 'Pending approval'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['draft', 'Draft'], ['activeListings', 'Active listings'], ['inactiveListings', 'Inactive listings'], ['archived', 'Archived products']] },
+  { key: 'catalog', label: 'Catalog health', items: [['recentImports', 'Recent imports'], ['failedImports', 'Failed imports'], ['requiringAttention', 'Products needing attention'], ['missingInformation', 'Missing information']] },
+  { key: 'operations', label: 'Operations', items: [['pendingSupportTickets', 'Pending support tickets'], ['pendingDocuments', 'Pending documents'], ['recentAdministrativeActions', 'Admin actions'], ['recentVendorActivity', 'Vendor activity']] },
+] as const
 
-        <div className="mt-10 flex flex-wrap gap-3">
-          <Link href="/account" className="btn-skip">Back to account</Link>
-          <Link href="/find" className="btn-next">Open room read</Link>
-        </div>
-      </div>
-    </main>
-  )
+function MetricValue({ metric }: { metric: DashboardMetric }) { return <strong className={metric.available ? '' : 'admin-metric-unavailable'}>{metric.available ? metric.value : '—'}</strong> }
+function formatDate(value: string) { return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value)) }
+function statusLabel(status: string) { return status.replaceAll('_', ' ').replaceAll('-', ' ') }
+
+function AccessDenied() {
+  return <main className="admin-page"><section className="admin-access-state"><p className="admin-eyebrow">Admin console</p><h1>Access is restricted.</h1><p>Your account does not have permission to view platform-wide administration.</p><Link href="/account" className="admin-button admin-button-secondary">Back to account</Link></section></main>
+}
+
+function DashboardContent({ data }: { data: AdminDashboardData }) {
+  const quickActions = [
+    { label: 'Add vendor', href: '/admin/vendors/new', permission: 'manage_vendors' },
+    { label: 'Review vendors', href: '/admin/vendors', permission: 'manage_vendors' },
+    { label: 'Review products', href: '/admin/products', permission: 'review_products' },
+    { label: 'Review imports', href: '/admin/imports', permission: 'review_imports' },
+    { label: 'Manage categories', href: '/admin/categories', permission: 'manage_categories' },
+  ].filter((action) => data.permissions.includes(action.permission))
+
+  return <main className="admin-page"><header className="admin-header"><Link href="/" className="logo logo-active">Furnish<span>AI</span></Link><nav aria-label="Admin navigation"><Link href="/account" className="admin-nav-link">Account</Link><span className="admin-role-chip">{statusLabel(data.role)}</span></nav></header><div className="admin-shell"><section className="admin-hero"><div><p className="admin-eyebrow">Admin portal / Phase 01</p><h1>Platform overview.</h1><p>One view across vendor health, catalog readiness, and the work waiting for your team.</p></div><div className="admin-hero-meta"><span>Access level</span><strong>{statusLabel(data.role)}</strong><small>Permission-aware workspace</small></div></section>{data.message ? <div className="admin-config-notice" role="status">{data.message}</div> : null}<section className="admin-section" aria-labelledby="kpi-title"><div className="admin-section-heading"><div><p className="admin-eyebrow">At a glance</p><h2 id="kpi-title">Platform signals</h2></div><span className="admin-data-note">Server-side data</span></div><div className="admin-metric-groups">{metricGroups.map((group) => <section className="admin-metric-group" key={group.key}><h3>{group.label}</h3><div className="admin-metric-grid">{group.items.map(([key, label]) => <article className="admin-metric-card" key={key}><span>{label}</span><MetricValue metric={data.metrics[group.key][key]} /></article>)}</div></section>)}</div></section><div className="admin-content-grid"><section className="admin-panel"><div className="admin-panel-heading"><div><p className="admin-eyebrow">Vendor pipeline</p><h2>Recent vendors</h2></div><Link href="/admin/vendors" className="admin-text-link">View all</Link></div>{data.recentVendors.length ? <div className="admin-list">{data.recentVendors.map((vendor) => <div className="admin-list-row" key={vendor.id}><div><strong>{vendor.name}</strong><span>{statusLabel(vendor.status)}</span></div><time dateTime={vendor.updatedAt}>{formatDate(vendor.updatedAt)}</time></div>)}</div> : <p className="admin-empty">No vendor records are available yet.</p>}</section><section className="admin-panel"><div className="admin-panel-heading"><div><p className="admin-eyebrow">Catalog pulse</p><h2>Recent products</h2></div><Link href="/admin/products" className="admin-text-link">View all</Link></div>{data.recentProducts.length ? <div className="admin-list">{data.recentProducts.map((product) => <div className="admin-list-row" key={product.id}><div><strong>{product.name}</strong><span>{statusLabel(product.status)}</span></div><time dateTime={product.updatedAt}>{formatDate(product.updatedAt)}</time></div>)}</div> : <p className="admin-empty">No product records are available yet.</p>}</section><section className="admin-panel admin-panel-wide"><div className="admin-panel-heading"><div><p className="admin-eyebrow">Moderation queue</p><h2>Products awaiting approval</h2></div><Link href="/admin/products?status=pending" className="admin-text-link">Review queue</Link></div>{data.awaitingApproval.length ? <div className="admin-list admin-list-two-col">{data.awaitingApproval.map((product) => <div className="admin-list-row" key={product.id}><div><strong>{product.name}</strong><span>{statusLabel(product.status)} · Vendor {product.vendorId.slice(0, 8)}</span></div><time dateTime={product.updatedAt}>{formatDate(product.updatedAt)}</time></div>)}</div> : <p className="admin-empty">The approval queue is clear, or its data source is not configured.</p>}</section><section className="admin-panel"><div className="admin-panel-heading"><div><p className="admin-eyebrow">Imports</p><h2>Recent catalog imports</h2></div><Link href="/admin/imports" className="admin-text-link">View all</Link></div>{data.recentImports.length ? <div className="admin-list">{data.recentImports.map((item) => <div className="admin-list-row" key={item.id}><div><strong>{item.fileName}</strong><span>{statusLabel(item.status)}</span></div><time dateTime={item.uploadedAt}>{formatDate(item.uploadedAt)}</time></div>)}</div> : <p className="admin-empty">No catalog imports are available yet.</p>}</section><section className="admin-panel"><div className="admin-panel-heading"><div><p className="admin-eyebrow">Audit stream</p><h2>Recent activity</h2></div><span className="admin-data-note">Read only</span></div>{data.recentActivity.length ? <div className="admin-list">{data.recentActivity.map((item) => <div className="admin-list-row" key={item.id}><div><strong>{item.label}</strong><span>{item.detail}</span></div><time dateTime={item.occurredAt}>{formatDate(item.occurredAt)}</time></div>)}</div> : <p className="admin-empty">Administrative activity will appear here once audit sources are connected.</p>}</section></div><section className="admin-bottom-grid"><section className="admin-alerts"><div className="admin-panel-heading"><div><p className="admin-eyebrow">Needs attention</p><h2>Notifications and alerts</h2></div></div>{data.alerts.map((alert) => <Link href={alert.href} className="admin-alert-row" key={alert.id}><span>{alert.label}</span><strong>{alert.available ? alert.count : '—'}</strong></Link>)}</section><section className="admin-quick-actions"><p className="admin-eyebrow">Shortcuts</p><h2>Quick actions</h2>{quickActions.length ? <div className="admin-action-list">{quickActions.map((action) => <Link href={action.href} className="admin-button admin-button-secondary" key={action.href}>{action.label}<span aria-hidden="true">↗</span></Link>)}</div> : <p className="admin-empty">Your role has dashboard visibility but no administrative action permissions.</p>}</section></section></div></main>
+}
+
+export default async function AdminPage() {
+  let data: AdminDashboardData
+  try { data = await getAdminDashboard() }
+  catch (error) { if (error instanceof Error && error.message === 'ADMIN_FORBIDDEN') return <AccessDenied />; throw error }
+  return <DashboardContent data={data} />
 }

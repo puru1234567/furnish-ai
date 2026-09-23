@@ -1,0 +1,5 @@
+import { NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/admin/authorization'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+
+export async function GET(_request: Request, context: { params: Promise<{ userId: string }> }) { try { await requireAdmin('user.manage'); const { userId } = await context.params; const url = process.env.NEXT_PUBLIC_SUPABASE_URL; const key = process.env.SUPABASE_SERVICE_ROLE_KEY; if (!url || !key) return NextResponse.json({ error: 'Admin data access is not configured.' }, { status: 503 }); const client = createSupabaseClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } }); const { data, error } = await client.from('user_activity_events').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(100); if (error) throw error; return NextResponse.json(data ?? []) } catch (error) { if (error instanceof Error && error.message === 'ADMIN_FORBIDDEN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 }); return NextResponse.json({ error: 'Unable to load user activity.' }, { status: 500 }) } }

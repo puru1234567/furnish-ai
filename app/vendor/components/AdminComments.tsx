@@ -1,0 +1,1 @@
+export function AdminComments({ comments }: { comments: string[] }) { if (!comments.length) return <div className="approval-empty">No reviewer comments have been added.</div>; return <div className="admin-comments">{comments.map((comment, index) => <article key={`${comment}-${index}`}><p className="vendor-eyebrow">Marketplace review team</p><p>{comment}</p></article>)}</div> }

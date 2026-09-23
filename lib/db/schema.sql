@@ -69,6 +69,8 @@ CREATE INDEX IF NOT EXISTS idx_products_search_blob_fts ON products USING GIN(
 -- CREATE INDEX IF NOT EXISTS idx_products_embedding ON products USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
 -- Cache tables for frequently accessed queries
+-- Why: avoid repeating expensive filter/search computations for hot queries.
+-- Use: stores serialized query results with expiry for quick response on repeated requests.
 CREATE TABLE IF NOT EXISTS product_cache (
   cache_key TEXT PRIMARY KEY,
   category TEXT,
@@ -80,6 +82,8 @@ CREATE TABLE IF NOT EXISTS product_cache (
 );
 
 -- Analytics: lightweight event stream for passive context and micro-responses
+-- Why: capture low-latency behavioral events without blocking user flow.
+-- Use: receives batched tracking events from /api/track for product and UX analytics.
 CREATE TABLE IF NOT EXISTS session_events (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   session_id text NOT NULL,
@@ -91,6 +95,8 @@ CREATE TABLE IF NOT EXISTS session_events (
 CREATE INDEX IF NOT EXISTS idx_product_cache_expires ON product_cache(expires_at);
 
 -- Audit log for data changes (optional, for compliance/debugging)
+-- Why: preserve change history of product rows for debugging and operational audits.
+-- Use: append-only trail of insert/update/delete metadata for products.
 CREATE TABLE IF NOT EXISTS product_audit_log (
   id BIGSERIAL PRIMARY KEY,
   product_id TEXT NOT NULL,
@@ -105,6 +111,8 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_product_id ON product_audit_log(product
 CREATE INDEX IF NOT EXISTS idx_audit_log_changed_at ON product_audit_log(changed_at);
 
 -- User preferences (budget habits, city, categories searched)
+-- Why: keep persistent user intent signals to improve future recommendations.
+-- Use: stores each user's preferred city, budget ranges, styles, and category/material preferences.
 CREATE TABLE IF NOT EXISTS user_preferences (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL UNIQUE,
@@ -118,6 +126,8 @@ CREATE TABLE IF NOT EXISTS user_preferences (
 );
 
 -- Each search/find session
+-- Why: track each recommendation journey as a first-class record.
+-- Use: stores user input context (budget, city, category, constraints) and result counts.
 CREATE TABLE IF NOT EXISTS search_sessions (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
@@ -137,6 +147,8 @@ CREATE TABLE IF NOT EXISTS search_sessions (
 );
 
 -- Room analyses tied to sessions
+-- Why: persist AI room understanding generated from uploaded photos.
+-- Use: links interpreted room metadata and raw analysis payload to a search session.
 CREATE TABLE IF NOT EXISTS room_analyses (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
@@ -154,6 +166,8 @@ CREATE TABLE IF NOT EXISTS room_analyses (
 );
 
 -- Saved/hearted results
+-- Why: support wishlist behavior and recall across visits.
+-- Use: stores products a user saved from recommendation results.
 CREATE TABLE IF NOT EXISTS saved_results (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
@@ -169,6 +183,8 @@ CREATE TABLE IF NOT EXISTS saved_results (
 );
 
 -- Rejection history
+-- Why: avoid repeatedly showing items users already rejected.
+-- Use: stores rejected product IDs and optional rejection reason per user.
 CREATE TABLE IF NOT EXISTS rejection_history (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
@@ -180,6 +196,8 @@ CREATE TABLE IF NOT EXISTS rejection_history (
 );
 
 -- Passive signals per session
+-- Why: capture non-explicit context that helps understand user behavior.
+-- Use: stores device/time/referrer/return-visitor hints attached to a session.
 CREATE TABLE IF NOT EXISTS passive_signals (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
@@ -193,6 +211,8 @@ CREATE TABLE IF NOT EXISTS passive_signals (
 );
 
 -- Product click tracking
+-- Why: measure engagement with recommended items and ranking quality.
+-- Use: stores clickthrough events with product and rank position context.
 CREATE TABLE IF NOT EXISTS product_clicks (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
@@ -204,6 +224,26 @@ CREATE TABLE IF NOT EXISTS product_clicks (
   clicked_at timestamptz DEFAULT now()
 );
 
+-- Saved searches
+-- Why: persist full recommendation shortlists as named searches in the user's account.
+-- Use: stores search metadata plus shortlist snapshot separate from per-item bookmarks.
+CREATE TABLE IF NOT EXISTS saved_searches (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  session_id uuid REFERENCES search_sessions(id) ON DELETE SET NULL,
+  furniture_type text,
+  room_type text,
+  city text,
+  budget integer,
+  budget_max integer,
+  result_count integer NOT NULL DEFAULT 0,
+  summary text,
+  context_insights text[] DEFAULT ARRAY[]::text[],
+  form_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
+  results_snapshot jsonb NOT NULL DEFAULT '[]'::jsonb,
+  created_at timestamptz DEFAULT now()
+);
+
 ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
 ALTER TABLE search_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE room_analyses ENABLE ROW LEVEL SECURITY;
@@ -211,6 +251,7 @@ ALTER TABLE saved_results ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rejection_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE passive_signals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE product_clicks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE saved_searches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE session_events ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "users own preferences" ON user_preferences
@@ -234,6 +275,9 @@ CREATE POLICY "users own passive signals" ON passive_signals
 CREATE POLICY "users own clicks" ON product_clicks
   FOR ALL USING (auth.uid() = user_id);
 
+CREATE POLICY "users own saved searches" ON saved_searches
+  FOR ALL USING (auth.uid() = user_id);
+
 -- Tracking events are write-only analytics rows.
 -- Allow inserts from anon/authenticated clients and service-role.
 CREATE POLICY "allow session event inserts" ON session_events
@@ -248,3 +292,5 @@ CREATE INDEX IF NOT EXISTS idx_search_sessions_user
   ON search_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_product_clicks_user 
   ON product_clicks(user_id);
+CREATE INDEX IF NOT EXISTS idx_saved_searches_user
+  ON saved_searches(user_id);

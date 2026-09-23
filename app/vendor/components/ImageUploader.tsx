@@ -1,0 +1,6 @@
+'use client'
+
+import type { ChangeEvent } from 'react'
+import type { ProductImage } from '@/lib/vendor/catalog'
+
+export function ImageUploader({ images, onChange }: { images: ProductImage[]; onChange: (images: ProductImage[]) => void }) { function addImages(event: ChangeEvent<HTMLInputElement>) { const files = Array.from(event.target.files ?? []); onChange([...images, ...files.map((file) => ({ id: `${file.name}-${file.lastModified}`, name: file.name, previewUrl: URL.createObjectURL(file), altText: file.name.replace(/\.[^/.]+$/, '') }))]); event.target.value = '' } return <div className="product-image-uploader"><label className="product-image-drop"><input type="file" accept="image/*" multiple onChange={addImages} /><strong>Add product images</strong><span>Upload clear photos of the product. Images remain staged until storage is connected.</span></label><div className="product-image-grid">{images.map((image) => <div className="product-image-tile" key={image.id}><img src={image.previewUrl} alt={image.altText} /><button type="button" onClick={() => onChange(images.filter((item) => item.id !== image.id))}>Remove</button></div>)}</div></div> }

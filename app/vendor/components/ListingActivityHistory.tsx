@@ -1,0 +1,6 @@
+import { type ListingActivityRecord } from '@/lib/vendor/catalog'
+import { ListingLifecycleBadge } from './ListingLifecycleBadge'
+
+const actionLabels: Record<ListingActivityRecord['action'], string> = { activate: 'Activated listing', deactivate: 'Temporarily deactivated listing', discontinue: 'Marked product discontinued', archive: 'Archived listing', request_removal: 'Requested permanent removal', restore: 'Restored archived listing' }
+
+export function ListingActivityHistory({ records }: { records: ListingActivityRecord[] }) { return <section className="listing-activity-panel"><div className="approval-section-heading"><div><p className="vendor-eyebrow">Activity history</p><h2>Listing lifecycle</h2></div><span>{records.length} actions</span></div>{records.length ? <div className="listing-activity-list">{records.map((record) => <article key={record.id}><div><strong>{actionLabels[record.action]}</strong><small>{new Date(record.createdAt).toLocaleString('en-IN')} · {record.createdBy}</small></div><div><ListingLifecycleBadge status={record.toStatus} /><small>{record.fromStatus} → {record.toStatus}</small></div></article>)}</div> : <p className="approval-empty">No lifecycle actions have been recorded.</p>}</section> }

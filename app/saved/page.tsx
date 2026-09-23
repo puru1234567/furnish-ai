@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { getSavedResults } from '@/lib/services/userDataService'
 import { SavedItemActions } from './SavedItemActions'
 
 export default async function SavedPage() {
@@ -12,7 +11,15 @@ export default async function SavedPage() {
     redirect('/')
   }
 
-  const savedItems = await getSavedResults(user.id)
+  const { data: savedItems, error } = await supabase
+    .from('saved_results')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('saved_at', { ascending: false })
+
+  if (error) {
+    console.error('[saved/page] getSavedResults failed:', error)
+  }
 
   return (
     <>
@@ -31,7 +38,7 @@ export default async function SavedPage() {
             <div className="results-section-copy">Items you saved across all your searches</div>
           </div>
 
-          {savedItems.length === 0 ? (
+          {(savedItems ?? []).length === 0 ? (
             <div className="result-card" style={{ padding: '28px' }}>
               <div className="card-body" style={{ gap: '18px' }}>
                 <div className="card-why" style={{ marginBottom: 0 }}>
@@ -44,7 +51,7 @@ export default async function SavedPage() {
             </div>
           ) : (
             <div className="results-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
-              {savedItems.map(item => (
+              {(savedItems ?? []).map(item => (
                 <article key={item.id} className="result-card">
                   <div className="card-body">
                     <div className="card-brand">{item.product_brand}</div>

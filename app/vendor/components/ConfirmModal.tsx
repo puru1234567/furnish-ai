@@ -1,0 +1,3 @@
+'use client'
+
+export function ConfirmModal({ title, message, confirmLabel, onConfirm, onCancel }: { title: string; message: string; confirmLabel: string; onConfirm: () => void; onCancel: () => void }) { return <div className="catalog-modal-backdrop" role="presentation"><div className="catalog-modal" role="dialog" aria-modal="true" aria-labelledby="catalog-modal-title"><p className="vendor-eyebrow">Please confirm</p><h2 id="catalog-modal-title">{title}</h2><p>{message}</p><div className="catalog-modal-actions"><button type="button" className="btn-skip" onClick={onCancel}>Cancel</button><button type="button" className="btn-next" onClick={onConfirm}>{confirmLabel}</button></div></div></div> }

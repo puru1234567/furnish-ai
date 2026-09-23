@@ -307,7 +307,8 @@ export class SupabaseFurnitureRepository implements IFurnitureRepository {
 
   async getDistinctValues(field: 'brand' | 'city' | 'category'): Promise<string[]> {
     try {
-      let url = `${this.supabaseUrl}/rest/v1/products?select=${field}`
+      const selectField = field === 'city' ? 'cities' : field
+      const url = `${this.supabaseUrl}/rest/v1/products?select=${selectField}`
 
       const response = await fetch(url, {
         headers: {

@@ -1,0 +1,3 @@
+import type { ImportRow } from '@/lib/vendor/imports'
+
+export function ImportPreviewTable({ rows }: { rows: ImportRow[] }) { return <div className="import-preview-wrap"><table className="import-preview-table"><caption>Valid records ready for import</caption><thead><tr><th>Row</th><th>Product</th><th>SKU</th><th>Category</th><th>Price</th><th>Stock</th></tr></thead><tbody>{rows.slice(0, 20).map((row) => <tr key={row.rowNumber}><td>{row.rowNumber}</td><td>{row.name}</td><td>{row.sku}</td><td>{row.category}</td><td>₹{Number(row.price).toLocaleString('en-IN')}</td><td>{row.stock}</td></tr>)}</tbody></table>{rows.length > 20 ? <p className="import-preview-note">Showing the first 20 valid records of {rows.length}.</p> : null}</div> }

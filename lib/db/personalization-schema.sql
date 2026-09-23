@@ -1,6 +1,8 @@
 -- Personalization persistence schema for Furnish AI.
 -- Additive schema for taste profiles and vector-ready personalization.
 
+-- Why: maintain a durable per-user preference model built from behavior.
+-- Use: stores structured preference signals and profile metadata for ranking personalization.
 CREATE TABLE IF NOT EXISTS taste_profiles (
   user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   profile_version integer NOT NULL DEFAULT 1,
@@ -23,6 +25,8 @@ CREATE INDEX IF NOT EXISTS idx_taste_profiles_updated_at
 CREATE INDEX IF NOT EXISTS idx_taste_profiles_category_affinity
   ON taste_profiles USING GIN(category_affinity);
 
+-- Why: keep an auditable event trail of profile updates.
+-- Use: stores incremental deltas that explain how and why a taste profile changed.
 CREATE TABLE IF NOT EXISTS personalization_profile_events (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -35,6 +39,8 @@ CREATE TABLE IF NOT EXISTS personalization_profile_events (
 CREATE INDEX IF NOT EXISTS idx_personalization_profile_events_user
   ON personalization_profile_events(user_id, created_at DESC);
 
+-- Why: support vector-based personalization and semantic matching.
+-- Use: stores user-level preference embeddings and generation metadata.
 CREATE TABLE IF NOT EXISTS user_preference_vectors (
   user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   embedding_model text NOT NULL,

@@ -1,6 +1,8 @@
 -- Analytics v2 schema for behavioral intelligence and personalization pipelines.
 -- This is additive to existing tables in schema.sql.
 
+-- Why: central event stream for analytics queries and downstream modeling.
+-- Use: stores normalized event envelopes from client/server tracking.
 CREATE TABLE IF NOT EXISTS analytics_events_v2 (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   session_id text NOT NULL,
@@ -25,6 +27,8 @@ CREATE INDEX IF NOT EXISTS idx_analytics_events_v2_user_id
 CREATE INDEX IF NOT EXISTS idx_analytics_events_v2_payload_gin
   ON analytics_events_v2 USING GIN(payload);
 
+-- Why: capture how users reformulate search intent over time.
+-- Use: records previous and next query pairs with refinement order per session.
 CREATE TABLE IF NOT EXISTS analytics_search_refinements (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   session_id text NOT NULL,
@@ -38,6 +42,8 @@ CREATE TABLE IF NOT EXISTS analytics_search_refinements (
 CREATE INDEX IF NOT EXISTS idx_analytics_search_refinements_session
   ON analytics_search_refinements(session_id, refinement_number);
 
+-- Why: measure engagement depth on recommendation surfaces.
+-- Use: logs actions (save, compare, click, etc.) against recommended product IDs.
 CREATE TABLE IF NOT EXISTS analytics_recommendation_engagement (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   session_id text NOT NULL,

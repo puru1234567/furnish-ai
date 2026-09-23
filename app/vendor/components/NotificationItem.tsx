@@ -1,0 +1,4 @@
+import Link from 'next/link'
+import type { VendorNotification } from '@/lib/vendor/notifications'
+
+export function NotificationItem({ notification, onRead }: { notification: VendorNotification; onRead: (id: string) => void }) { return <article className={`vendor-notification ${notification.readAt ? 'is-read' : 'is-unread'}`}><div className="vendor-notification-dot" /><div><p className="vendor-eyebrow">{notification.title}</p><p>{notification.body}</p><small>{new Date(notification.createdAt).toLocaleString('en-IN')}</small>{notification.actionHref ? <Link href={notification.actionHref} className="vendor-inline-action">{notification.actionLabel ?? 'Open'}</Link> : null}</div>{!notification.readAt ? <button type="button" onClick={() => onRead(notification.id)}>Mark read</button> : <span className="notification-read-label">Read</span>}</article> }

@@ -210,7 +210,7 @@ export interface RecommendationResponse {
 export interface SavedResult {
   id: string
   user_id: string
-  session_id: string
+  session_id: string | null
   product_id: string
   product_name: string
   product_price: number
@@ -218,6 +218,23 @@ export interface SavedResult {
   why_it_fits: string
   product_url?: string | null
   saved_at: string
+}
+
+export interface SavedSearch {
+  id: string
+  user_id: string
+  session_id: string | null
+  furniture_type?: string | null
+  room_type?: string | null
+  city?: string | null
+  budget?: number | null
+  budget_max?: number | null
+  result_count: number
+  summary?: string | null
+  context_insights?: string[] | null
+  form_snapshot: Record<string, unknown>
+  results_snapshot: Array<Record<string, unknown>>
+  created_at: string
 }
 
 export interface UserPreferences {

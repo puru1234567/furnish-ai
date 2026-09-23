@@ -45,6 +45,17 @@ export function AuthModal({
   useEffect(() => {
     if (!isOpen) return
 
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpen) return
+
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
     }
@@ -113,8 +124,16 @@ export function AuthModal({
 
     if (hasSession) {
       if (data.user && fullName.trim()) {
-        await upsertOwnProfileName(supabase, data.user, fullName)
+        try {
+          await upsertOwnProfileName(supabase, data.user, fullName)
+        } catch (profileError) {
+          setLoading(false)
+          setError(profileError instanceof Error ? profileError.message : 'Your account was created, but your profile could not be saved.')
+          return
+        }
       }
+      setError(null)
+      setSuccess('Account created successfully.')
       setLoading(false)
       onSignedIn('signup')
       return
@@ -126,17 +145,34 @@ export function AuthModal({
     })
 
     if (!autoLoginError && loginData.user && fullName.trim()) {
-      await upsertOwnProfileName(supabase, loginData.user, fullName)
+      try {
+        await upsertOwnProfileName(supabase, loginData.user, fullName)
+      } catch (profileError) {
+        setLoading(false)
+        setError(profileError instanceof Error ? profileError.message : 'Your account was created, but your profile could not be saved.')
+        return
+      }
     }
 
     setLoading(false)
 
     if (!autoLoginError) {
+      setError(null)
+      setSuccess('Account created successfully.')
       onSignedIn('signup')
       return
     }
 
+    setError(null)
     setSuccess('Account created. Automatic sign-in is blocked because email confirmation is still enabled in Supabase. Disable Confirm email in Auth settings if you want immediate login after signup.')
+  }
+
+  function handleModeChange(nextMode: AuthMode) {
+    setError(null)
+    setSuccess(null)
+    setPassword('')
+    setConfirmPassword('')
+    onModeChange(nextMode)
   }
 
   return (
@@ -193,14 +229,14 @@ export function AuthModal({
           <div className="auth-modal-toggle">
             <button
               type="button"
-              onClick={() => onModeChange('login')}
+              onClick={() => handleModeChange('login')}
               className={`auth-modal-toggle-button${mode === 'login' ? ' auth-modal-toggle-button--active' : ''}`}
             >
               Log in
             </button>
             <button
               type="button"
-              onClick={() => onModeChange('signup')}
+              onClick={() => handleModeChange('signup')}
               className={`auth-modal-toggle-button${mode === 'signup' ? ' auth-modal-toggle-button--active' : ''}`}
             >
               Sign up
@@ -311,14 +347,14 @@ export function AuthModal({
             {mode === 'login' ? (
               <>
                 New here?{' '}
-                <button type="button" onClick={() => onModeChange('signup')} className="auth-modal-inline-action">
+                <button type="button" onClick={() => handleModeChange('signup')} className="auth-modal-inline-action">
                   Sign up instead
                 </button>
               </>
             ) : (
               <>
                 Already have an account?{' '}
-                <button type="button" onClick={() => onModeChange('login')} className="auth-modal-inline-action">
+                <button type="button" onClick={() => handleModeChange('login')} className="auth-modal-inline-action">
                   Log in instead
                 </button>
               </>

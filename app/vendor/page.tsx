@@ -1,22 +1,6 @@
 import Link from 'next/link'
+import { VendorOnboardingForm } from './components/VendorOnboardingForm'
 
 export default function VendorPage() {
-  return (
-    <main className="min-h-screen px-6 py-24" style={{ backgroundColor: 'var(--cream)' }}>
-      <div className="mx-auto max-w-5xl rounded-[36px] border border-[rgba(181,138,82,0.16)] bg-[rgba(255,253,249,0.88)] p-10 shadow-[0_28px_70px_rgba(28,25,23,0.08)]">
-        <p className="text-xs uppercase tracking-[0.18em] text-[var(--terracotta)]">Vendor studio</p>
-        <h1 className="mt-4 text-5xl text-[var(--charcoal)]" style={{ fontFamily: 'var(--font-serif)' }}>
-          Vendor portal shell is live.
-        </h1>
-        <p className="mt-6 max-w-2xl text-sm leading-7 text-[var(--warm-grey)]">
-          This route is now role-protected. Vendors and admins can enter here; shopper accounts cannot. Next step is wiring catalog ingestion, source management, and upload jobs.
-        </p>
-
-        <div className="mt-10 flex flex-wrap gap-3">
-          <Link href="/account" className="btn-skip">Back to account</Link>
-          <Link href="/find" className="btn-next">Open room read</Link>
-        </div>
-      </div>
-    </main>
-  )
+  return <main className="vendor-page"><header className="vendor-header"><Link href="/" className="logo logo-active">Furnish<span>AI</span></Link><nav aria-label="Vendor navigation"><Link href="/vendor/integrations" className="btn-skip">Integrations</Link><Link href="/vendor/analytics" className="btn-skip">Analytics</Link><Link href="/vendor/notifications" className="btn-skip">Notifications</Link><Link href="/vendor/documents" className="btn-skip">Documents</Link><Link href="/vendor/support" className="btn-skip">Support</Link><Link href="/account" className="btn-skip">Account</Link><span className="vendor-header-label">Vendor portal</span></nav></header><div className="vendor-page-shell"><section className="vendor-hero"><div><p className="vendor-eyebrow">Vendor portal / Phase 01</p><h1>Build the foundation<br /><em>for your storefront.</em></h1><p className="vendor-hero-copy">Complete your business profile once. Save your progress as you go, and come back when you are ready to finish the review.</p></div><div className="vendor-progress-summary"><span className="vendor-summary-label">Onboarding progress</span><strong>Complete your profile to unlock catalog setup.</strong><div className="vendor-progress-track"><span /></div></div></section><VendorOnboardingForm /></div></main>
 }

@@ -9,6 +9,49 @@ FurnishAI uses a **feature flag** to switch between two database backends:
 1. **InMemoryFurnitureRepository** (default): Hardcoded furniture data in `lib/furniture-data.ts`
 2. **SupabaseFurnitureRepository** (production): Live Postgres database via Supabase
 
+## Runtime Table Expectations
+
+### Active Runtime Tables (expected to populate now)
+
+- `products`
+   - Populated by `npm run db:seed`.
+   - Used by recommendation repository queries.
+- `search_sessions`
+   - Populated when authenticated users run a recommendation flow.
+- `room_analyses`
+   - Populated for authenticated users when room analysis exists for a session.
+- `saved_results`
+   - Populated when authenticated users save items from results.
+- `saved_searches`
+   - Populated when authenticated users save full result shortlists using the Save action in results.
+   - Stores shortlist metadata and snapshots separate from per-item bookmarks.
+- `rejection_history`
+   - Populated when authenticated users dismiss items via "Not for me" actions.
+- `user_preferences`
+   - Upserted when authenticated users save items; also read to softly bias recommendation ordering.
+- `product_clicks`
+   - Populated only for authenticated users when they click "View piece".
+   - Anonymous users do not write to this table in the current implementation.
+- `session_events`
+   - Populated by `/api/track` analytics ingestion.
+
+### Deferred Tables (Option A for now)
+
+- `product_cache`
+   - Schema exists, but cache read/write and invalidation are not implemented yet.
+   - Empty rows are expected in current runtime.
+- `product_audit_log`
+   - Schema exists, but DB triggers/service writes are not implemented yet.
+   - Empty rows are expected in current runtime.
+
+## DB-Only Save Policy
+
+- Save flows are DB-backed for authenticated users.
+- Per-item bookmark actions write to `saved_results`.
+- Header Save action writes to `saved_searches`.
+- Browser `alert()` based save confirmations are replaced by in-app popup feedback.
+- Anonymous users are prompted to log in for save actions instead of localStorage fallback.
+
 ## Option 1: Quick Start (In-Memory, No Setup Required)
 
 If you just want to develop without a database:
@@ -62,8 +105,8 @@ Run the SQL schema file in Supabase SQL Editor:
 **What this creates:**
 - `products` table (main inventory)
 - Indexes for filtering and search
-- `product_cache` table (optional, for caching)
-- `product_audit_log` table (optional, for auditing)
+- `product_cache` table (deferred optional caching)
+- `product_audit_log` table (deferred optional auditing)
 
 ### Step 4: Seed Data
 

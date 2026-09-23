@@ -4,6 +4,8 @@
 -- ============================================================
 
 -- 1. Profiles table (mirrors auth.users, adds role)
+-- Why: store app-specific identity and authorization fields outside auth.users.
+-- Use: source of truth for UI-facing profile data and role-based experiences.
 create table if not exists public.profiles (
   id          uuid primary key references auth.users(id) on delete cascade,
   email       text not null,
@@ -17,11 +19,12 @@ create table if not exists public.profiles (
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  insert into public.profiles (id, email, role)
+  insert into public.profiles (id, email, role, full_name)
   values (
     new.id,
     new.email,
-    coalesce(new.raw_app_meta_data->>'role', 'user')
+    coalesce(new.raw_app_meta_data->>'role', 'user'),
+    coalesce(new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'name')
   )
   on conflict (id) do nothing;
   return new;
@@ -36,23 +39,65 @@ create trigger on_auth_user_created
 -- 3. Row Level Security
 alter table public.profiles enable row level security;
 
+-- Role is read from the JWT app_metadata claim, never by querying auth.users:
+-- the `authenticated` role has no SELECT grant there, so referencing it inside a
+-- policy makes every request fail with "permission denied for table users" (403).
+create or replace function public.jwt_role()
+returns text language sql stable as $$
+  select coalesce(
+    nullif(current_setting('request.jwt.claims', true), '')::jsonb -> 'app_metadata' ->> 'role',
+    'user'
+  );
+$$;
+
+drop policy if exists "Users can view own profile" on public.profiles;
+drop policy if exists "Users can update own profile" on public.profiles;
+drop policy if exists "Users can insert own profile" on public.profiles;
+drop policy if exists "Admins can view all profiles" on public.profiles;
+
 -- Users can read their own profile
 create policy "Users can view own profile"
   on public.profiles for select
   using (auth.uid() = id);
 
--- Users can update their own non-role fields
+-- Users can create their own profile row (needed by the account page upsert)
+create policy "Users can insert own profile"
+  on public.profiles for insert
+  with check (auth.uid() = id);
+
+-- Users can update their own profile; role changes stay server-side only.
+-- The check must not re-query profiles or the policy recurses into itself.
 create policy "Users can update own profile"
   on public.profiles for update
   using (auth.uid() = id)
-  with check (auth.uid() = id and role = (select role from public.profiles where id = auth.uid()));
+  with check (auth.uid() = id);
 
 -- Admins can read all profiles
 create policy "Admins can view all profiles"
   on public.profiles for select
-  using (
-    (select raw_app_meta_data->>'role' from auth.users where id = auth.uid()) = 'admin'
-  );
+  using (public.jwt_role() = 'admin');
+
+-- Role escalation guard: RLS can no longer compare against the stored role
+-- (that recursed), so pin the column here instead. set_user_role bypasses this
+-- because it runs as security definer with a service-role session.
+create or replace function public.protect_profile_role()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is not null and public.jwt_role() <> 'admin' then
+    if tg_op = 'UPDATE' then
+      new.role := old.role;
+    else
+      new.role := coalesce((select role from public.profiles where id = new.id), 'user');
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists profiles_protect_role on public.profiles;
+create trigger profiles_protect_role
+  before insert or update on public.profiles
+  for each row execute procedure public.protect_profile_role();
 
 -- 4. Helper function: set a user's role (call from service-role only, e.g. admin panel)
 -- Usage: select set_user_role('<user-id>', 'vendor');

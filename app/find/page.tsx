@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { isAuthEnabled } from '@/lib/config/auth-config'
 import { saveStoredResults } from '@/lib/utils/saved-results'
+import { usePathname } from "next/navigation";
 import {
   createSearchSession,
   getRejectedIds,
@@ -323,7 +324,7 @@ export default function FindPage() {
 
     setStep(99)
     try {
-      let currentSessionId: string | null = sessionId
+      let currentSessionId: string | null = null
       if (userId) {
         const newSessionId = await createSearchSession(userId, {
           furniture_category: form.furnitureType,
@@ -396,7 +397,7 @@ export default function FindPage() {
 
       const data = await getRecommendations(ctx, userId)
       if (currentSessionId && data?.items?.length) {
-        void updateSessionResultCount(currentSessionId, data.items.length)
+        await updateSessionResultCount(currentSessionId, data.items.length)
       }
       try {
         saveStoredResults({
@@ -419,7 +420,7 @@ export default function FindPage() {
       console.error('[submit]', e)
       setStep(101)
     }
-  }, [form, roomAnalysis, getRecommendations, setStep, sessionId, userId, passiveCtx])
+  }, [form, roomAnalysis, getRecommendations, setStep, userId, passiveCtx])
 
   useEffect(() => {
     if (!userId || !sessionId || !roomAnalysis) return
@@ -532,12 +533,12 @@ export default function FindPage() {
     return () => window.clearTimeout(timeout)
   }, [step])
 
-
-
+const pathname = usePathname();
+pathname === "/find";
   // Render
   return (
     <>
-      <header className="site-header">
+      <header className="site-header" style={{...(pathname === "/find" && { justifyContent: "space-between !important"}), }}>
         <button
           type="button"
           className={`logo ${step === 99 ? 'logo-active' : ''}`}
@@ -550,7 +551,7 @@ export default function FindPage() {
         >
           Furnish<span>AI</span>
         </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <div>
           <Link href="/" className="btn-skip">
             <span aria-hidden="true">← </span>
             <span>Back to home</span>

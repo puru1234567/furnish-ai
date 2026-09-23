@@ -11,8 +11,11 @@ import { ComparisonView } from './ComparisonView'
 import { CITIES } from '../find-page-constants'
 import {
   saveResult,
+  saveSearch,
   unsaveResult,
   getSavedResults,
+  getRejectedIds,
+  rejectItem,
   upsertPreferences,
   trackProductClick,
 } from '@/lib/services/userDataService'
@@ -66,6 +69,7 @@ export function ResultsDisplay({
   const [isMobile, setIsMobile] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
   const [savedIds, setSavedIds] = useState<string[]>([])
+  const [rejectedIds, setRejectedIds] = useState<string[]>([])
   const [usefulnessRating, setUsefulnessRating] = useState<'yes' | 'partial' | 'no' | null>(null)
   const [feedbackReason, setFeedbackReason] = useState<string | null>(null)
   const [debugOpen, setDebugOpen] = useState(false)
@@ -77,34 +81,41 @@ export function ResultsDisplay({
   const [hasAppliedPriceCap, setHasAppliedPriceCap] = useState(false)
   const [isApplyingPrice, setIsApplyingPrice] = useState(false)
   const [expandedWhyById, setExpandedWhyById] = useState<Record<string, boolean>>({})
+  const [popup, setPopup] = useState<{ tone: 'success' | 'error' | 'info'; message: string } | null>(null)
+
+  const showPopup = useCallback((tone: 'success' | 'error' | 'info', message: string) => {
+    setPopup({ tone, message })
+  }, [])
+
+  useEffect(() => {
+    if (!popup) return
+    const timeout = window.setTimeout(() => setPopup(null), 2600)
+    return () => window.clearTimeout(timeout)
+  }, [popup])
 
   // Load saved results from Supabase
   useEffect(() => {
     if (!userId) {
-      try {
-        const raw = localStorage.getItem('furnish_ai_local_saved_ids')
-        if (!raw) {
-          setSavedIds([])
-          return
-        }
-        const parsed = JSON.parse(raw)
-        if (Array.isArray(parsed)) {
-          setSavedIds(parsed.filter((id): id is string => typeof id === 'string'))
-          return
-        }
-        setSavedIds([])
-      } catch {
-        setSavedIds([])
-      }
+      setSavedIds([])
+      setRejectedIds([])
       return
     }
 
     getSavedResults(userId).then(results => {
       setSavedIds(results.map(r => r.product_id))
     })
+
+    getRejectedIds(userId).then(ids => {
+      setRejectedIds(ids)
+    })
   }, [userId])
 
   const handleSave = useCallback((item: RecommendedItem) => {
+    if (!userId) {
+      showPopup('info', 'Log in to save items to your account.')
+      return
+    }
+
     const alreadySaved = savedIds.includes(item.id)
     const nextSavedIds = alreadySaved
       ? savedIds.filter(id => id !== item.id)
@@ -112,21 +123,13 @@ export function ResultsDisplay({
 
     setSavedIds(nextSavedIds)
 
-    if (!userId) {
-      try {
-        localStorage.setItem('furnish_ai_local_saved_ids', JSON.stringify(nextSavedIds))
-      } catch {
-        // Ignore storage failures and keep in-memory toggle.
-      }
-      return
-    }
-
     if (alreadySaved) {
       void unsaveResult(userId, item.id)
+      showPopup('info', 'Item removed from saved items.')
       return
     }
 
-    void saveResult(userId, sessionId ?? '', {
+    void saveResult(userId, sessionId, {
       product_id: item.id,
       product_name: item.name,
       product_price: item.price,
@@ -140,11 +143,15 @@ export function ResultsDisplay({
       typical_budget_max: form.budget,
       preferred_categories: form.furnitureType ? [form.furnitureType] : undefined,
     })
-  }, [userId, savedIds, sessionId, form.city, form.budget, form.furnitureType])
+    showPopup('success', 'Item saved to your account.')
+  }, [userId, savedIds, sessionId, form.city, form.budget, form.furnitureType, showPopup])
 
   const selectedContextualCount = Object.keys(form.contextualAnswers).length
 
-  const baseResults = results
+  const baseResults = useMemo(
+    () => results.filter(item => !rejectedIds.includes(item.id)),
+    [results, rejectedIds]
+  )
 
   // Slider should start around user-selected budget with +20% suggested cap
   const selectedBudget = Math.max(1000, form.budget || 1000)
@@ -416,11 +423,50 @@ export function ResultsDisplay({
     setShowCompareView(false)
   }, [compareItems, onCompareToggle])
 
-  const handleSaveResults = useCallback(() => {
-    const data = { results: activeResults, meta, form, roomAnalysis, savedAt: new Date() }
-    localStorage.setItem('furnish_ai_saved_results', JSON.stringify(data))
-    alert('Results saved! You can access them from your account.')
-  }, [activeResults, meta, form, roomAnalysis])
+  const handleSaveResults = useCallback(async () => {
+    if (!userId) {
+      showPopup('info', 'Log in to save searches to your account.')
+      return
+    }
+
+    const saveOutcome = await saveSearch(userId, {
+      session_id: sessionId,
+      furniture_type: form.furnitureType,
+      room_type: form.roomType,
+      city: form.city,
+      budget: form.budget,
+      budget_max: form.budgetMax,
+      result_count: activeResults.length,
+      summary: meta.summary,
+      context_insights: meta.contextInsights,
+      form_snapshot: form as unknown as Record<string, unknown>,
+      results_snapshot: activeResults as unknown as Array<Record<string, unknown>>,
+    })
+
+    if (!saveOutcome.id) {
+      if (saveOutcome.reason === 'not_authenticated') {
+        showPopup('info', 'Your session expired. Please log in again to save searches.')
+        return
+      }
+
+      if (saveOutcome.reason === 'table_missing') {
+        showPopup('error', 'Saved searches table is not set up yet. Run the latest schema SQL.')
+        return
+      }
+
+      if (saveOutcome.reason === 'forbidden') {
+        showPopup('error', 'You do not have permission to save searches for this account.')
+        return
+      }
+
+      showPopup('error', saveOutcome.code
+        ? `Could not save this search (${saveOutcome.code}). Please try again.`
+        : 'Could not save this search. Please try again.')
+      return
+    }
+
+    showPopup('success', 'Search saved to your account.')
+  }, [userId, sessionId, form, activeResults, meta.summary, meta.contextInsights, showPopup])
 
   const handleShareResults = useCallback(() => {
     const shareText = `Check out these ${activeResults.length} furniture recommendations from FurnishAI! Perfect for ${form.roomType.toLowerCase()}.`
@@ -428,9 +474,9 @@ export function ResultsDisplay({
       navigator.share({ title: 'FurnishAI Results', text: shareText })
     } else {
       navigator.clipboard.writeText(`${shareText}\n${window.location.href}`)
-      alert('Link copied to clipboard!')
+      showPopup('success', 'Link copied to clipboard.')
     }
-  }, [activeResults.length, form])
+  }, [activeResults.length, form, showPopup])
 
   const toggleQuickAdjustment = useCallback((id: QuickAdjustmentId) => {
     if (isMobile && mobileSidebarOpen) {
@@ -530,6 +576,15 @@ export function ResultsDisplay({
       // Swallow share/copy failures to avoid interrupting product exploration flow.
     }
   }, [])
+
+  const handleReject = useCallback((item: RecommendedItem, reason: string = 'Not interested') => {
+    if (rejectedIds.includes(item.id)) return
+
+    setRejectedIds(current => current.includes(item.id) ? current : [...current, item.id])
+
+    if (!userId) return
+    void rejectItem(userId, sessionId, item.id, reason)
+  }, [rejectedIds, userId, sessionId])
 
   const toggleWhyExpanded = useCallback((itemId: string) => {
     setExpandedWhyById((current) => ({
@@ -640,6 +695,13 @@ export function ResultsDisplay({
                 <button
                   type="button"
                   className="card-action-btn"
+                  onClick={() => handleReject(item, 'Not interested in this stretch option')}
+                >
+                  Not for me
+                </button>
+                <button
+                  type="button"
+                  className="card-action-btn"
                   onClick={() => { void handleShareProduct(item) }}
                 >
                   Share
@@ -656,7 +718,7 @@ export function ResultsDisplay({
                   className="card-action-btn card-action-btn--cta"
                   onClick={() => {
                     if (userId) {
-                      void trackProductClick(userId, sessionId ?? '', {
+                      void trackProductClick(userId, sessionId, {
                         product_id: item.id,
                         product_name: item.name,
                         rank_position: index + 1,
@@ -739,6 +801,13 @@ export function ResultsDisplay({
               <button
                 type="button"
                 className="card-action-btn"
+                onClick={() => handleReject(item, 'Not interested in this stretch option')}
+              >
+                Not for me
+              </button>
+              <button
+                type="button"
+                className="card-action-btn"
                 onClick={() => { void handleShareProduct(item) }}
               >
                 Share
@@ -755,7 +824,7 @@ export function ResultsDisplay({
                 className="card-action-btn card-action-btn--cta"
                 onClick={() => {
                   if (userId) {
-                    void trackProductClick(userId, sessionId ?? '', {
+                    void trackProductClick(userId, sessionId, {
                       product_id: item.id,
                       product_name: item.name,
                       rank_position: index + 1,
@@ -839,6 +908,13 @@ export function ResultsDisplay({
             <button
               type="button"
               className="card-action-btn"
+              onClick={() => handleReject(item, 'Not interested in this recommendation')}
+            >
+              Not for me
+            </button>
+            <button
+              type="button"
+              className="card-action-btn"
               onClick={() => { void handleShareProduct(item) }}
             >
               Share
@@ -855,7 +931,7 @@ export function ResultsDisplay({
               className="card-action-btn card-action-btn--cta"
               onClick={() => {
                 if (userId) {
-                  void trackProductClick(userId, sessionId ?? '', {
+                  void trackProductClick(userId, sessionId, {
                     product_id: item.id,
                     product_name: item.name,
                     rank_position: index + 1,
@@ -885,6 +961,34 @@ export function ResultsDisplay({
   return (
     <>
       <style>{`
+        .results-popup {
+          position: fixed;
+          right: 20px;
+          top: 88px;
+          z-index: 80;
+          border-radius: 12px;
+          padding: 10px 14px;
+          font-size: 13px;
+          font-weight: 600;
+          box-shadow: 0 10px 26px rgba(0, 0, 0, 0.14);
+          border: 1px solid transparent;
+          max-width: min(90vw, 340px);
+        }
+        .results-popup.success {
+          background: #edf8f0;
+          color: #1f5f35;
+          border-color: #b6e0c3;
+        }
+        .results-popup.error {
+          background: #fff2f2;
+          color: #8a2121;
+          border-color: #f2bcbc;
+        }
+        .results-popup.info {
+          background: #f4f5f8;
+          color: #354156;
+          border-color: #d6dbe5;
+        }
         .debug-panel {
           margin: 0 0 16px;
           border: 1px solid rgba(0,0,0,0.08);
@@ -999,6 +1103,11 @@ export function ResultsDisplay({
           background: #e8e1d8;
         }
       `}</style>
+      {popup ? (
+        <div className={`results-popup ${popup.tone}`} role="status" aria-live="polite">
+          {popup.message}
+        </div>
+      ) : null}
       <div className="results-wrapper results-shell">
         <aside
           id="shortlist-controls-popup"

@@ -1,0 +1,4 @@
+import { PRODUCT_STATUS_LABELS, type ApprovalHistoryEntry } from '@/lib/vendor/catalog'
+import { ProductStatusBadge } from './ProductStatusBadge'
+
+export function ApprovalTimeline({ history }: { history: ApprovalHistoryEntry[] }) { if (!history.length) return <div className="approval-empty">No approval activity yet. Submit this product to start its review history.</div>; return <ol className="approval-timeline">{history.map((entry) => <li key={entry.id}><span className="approval-timeline-dot" /><div><div className="approval-timeline-head"><ProductStatusBadge status={entry.status} /><time dateTime={entry.changedAt}>{new Date(entry.changedAt).toLocaleString('en-IN')}</time></div><strong>{PRODUCT_STATUS_LABELS[entry.status]}</strong><small>Updated by {entry.changedBy}</small>{entry.comment ? <p>{entry.comment}</p> : null}{entry.requestedChanges.length ? <ul>{entry.requestedChanges.map((change) => <li key={change}>{change}</li>)}</ul> : null}</div></li>)}</ol> }

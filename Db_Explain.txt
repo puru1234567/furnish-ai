@@ -1,0 +1,446 @@
+FurnishAI Database Schema Explanation
+=====================================
+
+Purpose
+-------
+This document explains the SQL files in lib/db and the dependency-safe order in which they should be executed.
+
+The files are currently stored in lib/db. Supabase CLI does not automatically execute files from that folder. For CLI migrations, copy or consolidate them into timestamped files under supabase/migrations, preserving the order below.
+
+Execution Order
+---------------
+
+01. auth-schema.sql
+02. schema.sql
+03. analytics-schema.sql
+04. personalization-schema.sql
+05. catalog-configuration-schema.sql
+06. admin-vendor-management-schema.sql
+07. vendor-onboarding-schema.sql
+08. vendor-operations-schema.sql
+08b. vendor-storage-schema.sql
+09. vendor-integrations-schema.sql
+10. vendor-import-schema.sql
+11. vendor-catalog-schema.sql
+12. admin-users-roles-schema.sql
+13. admin-bulk-operations-schema.sql
+14. admin-bulk-processing-phase2-schema.sql
+15. admin-onboarding-review-schema.sql
+16. admin-communication-schema.sql
+17. admin-integrations-settings-schema.sql
+18. admin-catalog-management-schema.sql
+19. admin-marketplace-controls-schema.sql
+20. vendor-analytics-schema.sql
+21. admin-analytics-audit-schema.sql
+22. admin-security-remediation-phase1-schema.sql
+23. admin-security-remediation-phase2-schema.sql
+
+Why This Order Matters
+----------------------
+- auth-schema.sql creates public.profiles, which is referenced by most vendor and admin tables.
+- schema.sql creates the core furniture, search, room-analysis, saved-result, and user-signal tables.
+- analytics-schema.sql and personalization-schema.sql create independent analytics and personalization tables.
+- catalog-configuration-schema.sql creates category and attribute configuration tables and references profiles for audit records.
+- admin-vendor-management-schema.sql creates vendor_accounts, vendor_invitations, and admin_audit_events.
+- Vendor files create the base tables used by later admin files.
+- admin-bulk-processing-phase2-schema.sql alters tables created by admin-bulk-operations-schema.sql.
+- vendor-storage-schema.sql creates the private `vendor-documents` storage bucket and RLS policies backing document uploads; it only needs vendor-operations-schema.sql (which creates vendor_documents) to exist first as context, since storage.objects policies are independent of that table.
+- admin-onboarding-review-schema.sql alters vendor onboarding tables, so it must follow vendor-onboarding-schema.sql.
+- admin-communication-schema.sql alters vendor support tables and references vendor notifications, so it follows vendor-operations-schema.sql.
+- admin-integrations-settings-schema.sql alters vendor integration tables, so it follows vendor-integrations-schema.sql.
+- Admin catalog and marketplace files reference vendor_products, so they follow vendor-catalog-schema.sql.
+- admin-analytics-audit-schema.sql reads from several vendor and admin tables and adds audit protections.
+- admin-security-remediation-phase1-schema.sql replaces the earlier set_user_role function and restricts sensitive RPC execution.
+- admin-security-remediation-phase2-schema.sql removes an over-broad profile policy and adds the final vendor-account role trigger.
+
+1. auth-schema.sql
+------------------
+Main table:
+- public.profiles: application profile linked one-to-one to auth.users.
+
+Profile fields include email, application role, name, and timestamps.
+Allowed application roles are:
+- user
+- vendor
+- admin
+--select public.set_user_role(
+  'USER_UUID_HERE',
+  'admin',
+  'platform_admin'
+);
+
+Policies:
+- Users can view their own profile.
+- Users can insert their own profile.
+- Users can update their own profile, but cannot freely change the role.
+- Admins can initially view all profiles. This policy is removed later by security phase 2.
+
+Functions:
+- handle_new_user(): trigger function that creates a profile after a new auth.users row is inserted.
+- jwt_role(): reads the role from JWT app_metadata for RLS checks.
+- protect_profile_role(): prevents normal user sessions from changing profile roles.
+- set_user_role(uuid, text): initial service-role helper for changing a user's role.
+
+Triggers:
+- on_auth_user_created: creates a profile after signup.
+- profiles_protect_role: protects the profile role column.
+
+2. schema.sql
+-------------
+Core application tables:
+- products: furniture inventory and searchable product data.
+- product_cache: cached query results with expiration.
+- session_events: low-latency product and UX event stream.
+- product_audit_log: product change history.
+- user_preferences: persistent user preference signals.
+- search_sessions: each recommendation/search journey.
+- room_analyses: AI room analysis linked to a search session.
+- saved_results: products saved by users.
+- rejection_history: products rejected by users.
+- passive_signals: inferred device, time, referrer, and return-visitor signals.
+- product_clicks: product click tracking.
+- saved_searches: saved search criteria.
+
+Relationships:
+- Product audit records reference products.
+- User-specific tables reference auth.users.
+- Room analyses and user signals can reference search_sessions.
+- Saved and rejected results can reference search_sessions.
+
+Policies:
+- Most user tables use RLS so a user can access only their own rows.
+- session_events allows controlled event insertion.
+
+3. analytics-schema.sql
+-----------------------
+Tables:
+- analytics_events_v2: general analytics event stream.
+- analytics_search_refinements: search refinement events.
+- analytics_recommendation_engagement: recommendation views, clicks, saves, and related engagement.
+
+Security:
+- analytics_events_v2 has RLS enabled.
+- An insert policy permits event collection without exposing unrestricted reads.
+
+4. personalization-schema.sql
+-----------------------------
+Tables:
+- taste_profiles: persistent user taste profile.
+- personalization_profile_events: changes and signals used to build a profile.
+- user_preference_vectors: machine-readable preference vectors.
+
+Policies:
+- Users can access only their own taste profile.
+- Users can access only their own personalization events.
+- Users can access only their own preference vectors.
+
+5. catalog-configuration-schema.sql
+-----------------------------------
+Tables:
+- catalog_categories: furniture category hierarchy; supports parent categories.
+- catalog_attributes: reusable category attributes.
+- catalog_category_attributes: many-to-many category/attribute mapping.
+- catalog_requirements: rules and requirements for categories.
+- catalog_configuration_audit: records configuration changes and actors.
+
+Security:
+- All five tables have RLS enabled.
+- Audit rows reference public.profiles.
+
+6. admin-vendor-management-schema.sql
+-------------------------------------
+Changes and tables:
+- Adds vendor_id to profiles.
+- vendor_accounts: vendor account status and operational details.
+- vendor_invitations: invitations for vendors.
+- admin_audit_events: append-only administrative audit events.
+
+Policies and functions:
+- Vendors can view their own account status.
+- vendor_can_operate(uuid): checks whether a vendor is allowed to operate.
+- RLS is enabled on vendor_accounts, vendor_invitations, and admin_audit_events.
+
+7. vendor-onboarding-schema.sql
+-------------------------------
+Tables:
+- vendor_onboarding: vendor onboarding state and information.
+- vendor_onboarding_documents: documents submitted during onboarding.
+
+Relationships:
+- Both tables ultimately depend on profiles.
+- Documents reference vendor_onboarding.
+
+Policies:
+- Vendors can manage only their own onboarding record and documents.
+
+8. vendor-operations-schema.sql
+-------------------------------
+Tables:
+- vendor_notifications: vendor notifications.
+- vendor_notification_preferences: notification settings per vendor.
+- vendor_documents: vendor operational documents.
+- vendor_support_tickets: support tickets.
+- vendor_support_messages: messages within tickets.
+- vendor_support_attachments: files attached to support messages.
+
+Relationships:
+- Messages reference support tickets.
+- Attachments reference support messages.
+- Vendor-owned records reference profiles.
+
+Policies:
+- Vendors can manage their own notifications, preferences, documents, and tickets.
+- Vendors can manage messages and attachments only through their own tickets.
+
+9. vendor-integrations-schema.sql
+---------------------------------
+Tables:
+- vendor_integrations: vendor integration connections.
+- vendor_integration_sync_runs: synchronization attempts.
+- vendor_integration_sync_errors: errors from sync runs.
+- vendor_integration_webhook_events: received webhook events.
+
+Policies:
+- Vendors can view only their own integrations and related sync data.
+
+10. vendor-import-schema.sql
+----------------------------
+Tables:
+- vendor_catalog_imports: uploaded catalog import jobs.
+- vendor_catalog_import_errors: row-level or validation errors for imports.
+
+Relationships:
+- Import errors reference catalog imports.
+
+Policies:
+- Vendors can view their own imports and errors.
+- Vendors can create imports only for themselves and as the uploading user.
+
+11. vendor-catalog-schema.sql
+-----------------------------
+Tables:
+- vendor_products: vendor-owned product catalog records.
+- vendor_product_images: product images.
+- vendor_product_variants: product variants.
+- vendor_product_approval_events: product approval history.
+- vendor_product_activity: product activity history.
+
+Relationships:
+- All child product tables reference vendor_products.
+- vendor_products references profiles as its vendor.
+
+Policies:
+- Vendors can manage only their own products, images, and variants.
+- Vendors can view only approval and activity events belonging to their products.
+
+12. admin-users-roles-schema.sql
+--------------------------------
+Changes and tables:
+- Adds account_status and last_seen_at to profiles.
+- admin_roles: administrative role definitions.
+- admin_permissions: permission definitions.
+- admin_role_permissions: many-to-many role/permission mapping.
+- admin_user_roles: assigns admin roles to users.
+- vendor_user_roles: assigns vendor-specific roles.
+- user_invitations: invitations and invited-user metadata.
+- user_activity_events: user and administrative activity records.
+
+Role model:
+- The profiles.role column identifies user, vendor, or admin.
+- admin_roles and admin_permissions provide more detailed authorization within admin.
+- Role assignment tables connect users to granular roles and permissions.
+
+Security:
+- RLS is enabled on all tables created in this file.
+- The file also inserts the standard admin role/permission mappings.
+
+13. admin-bulk-operations-schema.sql
+------------------------------------
+Tables:
+- admin_bulk_jobs: administrative bulk-operation jobs.
+- admin_bulk_job_items: individual items within a bulk job.
+
+Relationships:
+- Jobs reference the requesting profile.
+- Job items reference their parent job.
+
+Security:
+- RLS is enabled on both tables.
+
+14. admin-bulk-processing-phase2-schema.sql
+-------------------------------------------
+Changes admin_bulk_job_items by adding processing fields such as:
+- processing status/error fields.
+- claimed_at.
+- claimed_by, referencing profiles.
+
+This file must run after admin-bulk-operations-schema.sql.
+
+15. admin-onboarding-review-schema.sql
+--------------------------------------
+Changes:
+- Adds review-related fields to vendor_onboarding.
+- Adds review-related fields to vendor_onboarding_documents.
+- Adds reviewer, comment, expiration, and storage bucket information.
+
+Table:
+- admin_onboarding_review_events: audit history for onboarding decisions.
+
+Relationships:
+- Review events reference vendors, documents, and actor profiles.
+
+16. admin-communication-schema.sql
+---------------------------------
+Changes:
+- Extends vendor_support_tickets with assignment and closure information.
+- Updates support ticket status and priority constraints.
+
+Tables:
+- vendor_support_internal_notes: private support notes.
+- admin_communications: messages sent by administrators.
+- admin_communication_recipients: vendor recipients for communications.
+
+Relationships:
+- Notes reference support tickets and profiles.
+- Communications reference sender profiles and optional vendor profiles.
+- Recipients reference communications, vendors, and optional notifications.
+
+17. admin-integrations-settings-schema.sql
+------------------------------------------
+Changes vendor integration tables with:
+- admin_enabled.
+- disabled reason, user, and timestamp.
+- requesting administrator.
+- trigger source.
+- retry relationship.
+
+Table:
+- platform_settings: platform-wide administrative configuration.
+
+Security:
+- RLS is enabled on platform_settings.
+
+18. admin-catalog-management-schema.sql
+--------------------------------------
+Table:
+- admin_product_change_events: administrative changes to vendor products.
+
+Relationships:
+- References vendor_products, vendor profiles, and actor profiles.
+
+Security:
+- RLS is enabled.
+
+19. admin-marketplace-controls-schema.sql
+-----------------------------------------
+Tables:
+- inventory_adjustment_events: inventory changes made by administrators.
+- price_adjustment_events: price changes made by administrators.
+- marketplace_listing_schedules: scheduled marketplace listing actions.
+
+Relationships:
+- Product records reference vendor_products.
+- Vendor and actor fields reference profiles.
+
+Security:
+- RLS is enabled on all three tables.
+
+20. vendor-analytics-schema.sql
+-------------------------------
+This file does not create tables. It creates indexes on vendor_products for analytics queries:
+- vendor and lifecycle status index.
+- vendor and approval status index.
+
+It also documents the aggregation contract for joining vendor products to analytics events and recommendation engagement.
+
+21. admin-analytics-audit-schema.sql
+------------------------------------
+Changes admin_audit_events with vendor, old/new value, reason, severity, IP address, and user-agent fields.
+
+Functions:
+- prevent_audit_mutation(): prevents modification of append-only audit records.
+- admin_analytics_vendor_metrics(): vendor-level operational metrics.
+- admin_analytics_vendor_catalog_sizes(): catalog size metrics.
+- admin_analytics_product_metrics(): product performance metrics.
+- admin_analytics_products_by_category(): category-level product metrics.
+- admin_analytics_catalog_growth(): catalog growth metrics.
+- admin_analytics_operational_metrics(): imports, approvals, tickets, documents, and audit metrics.
+
+Trigger:
+- trg_admin_audit_append_only: enforces audit immutability.
+
+These analytics functions read from several vendor and admin tables, so this file belongs after those tables exist.
+
+22. admin-security-remediation-phase1-schema.sql
+------------------------------------------------
+Security changes:
+- Removes the old two-argument set_user_role function before recreating it.
+- Creates a hardened three-argument set_user_role function.
+- Requires a valid admin_role when assigning the admin role.
+- Blocks calls from normal authenticated user sessions.
+- Restricts set_user_role execution to service_role.
+- Restricts admin analytics functions to service_role.
+- Restricts vendor_can_operate to service_role.
+
+This file changes function permissions and definitions and must run after the functions it secures have been created.
+
+23. admin-security-remediation-phase2-schema.sql
+------------------------------------------------
+Security changes:
+- Removes the broad Admins can view all profiles policy.
+- Creates enforce_vendor_account_role(): trigger function that verifies vendor_accounts.vendor_id belongs to a profile whose role is vendor.
+
+Trigger:
+- trg_vendor_accounts_role_check: validates vendor account inserts and updates.
+
+This is the final file because it depends on public.profiles and public.vendor_accounts and represents the final security layer.
+
+Roles and Access Summary
+------------------------
+Database/API roles:
+- anon: unauthenticated requests.
+- authenticated: signed-in user requests.
+- service_role: trusted server-side operations that bypass normal RLS. Never expose its key to browsers.
+
+Application roles:
+- user: normal customer account.
+- vendor: vendor account with access to its own catalog, onboarding, operations, imports, and integrations.
+- admin: administrative account. Granular permissions are represented through admin_roles, admin_permissions, and mapping tables.
+
+RLS and Policies
+----------------
+Row Level Security (RLS) is PostgreSQL's per-row authorization mechanism. Enabling RLS does not automatically grant access; policies determine which rows a role can read or change.
+
+Common policy patterns in these files:
+- auth.uid() = id or auth.uid() = vendor_id: a user can access only their own row.
+- with check: validates rows being inserted or updated.
+- exists (...): authorizes access through a related parent row, such as a vendor's product or support ticket.
+- public.jwt_role() = 'admin': checks the application role stored in JWT app_metadata.
+
+Functions and Triggers
+----------------------
+Functions encapsulate database logic. SECURITY DEFINER functions run with the function owner's privileges, so their EXECUTE grants and input validation are important security controls.
+
+Triggers automatically run functions when rows are inserted, updated, or deleted. Important triggers include:
+- profile creation after auth signup.
+- profile role protection.
+- append-only audit enforcement.
+- vendor-account role validation.
+
+Supabase CLI Notes
+------------------
+The current supabase/config.toml has an empty db.migrations.schema_paths setting. Files in lib/db are not automatically executed by Supabase CLI.
+
+Recommended CLI layout:
+- Copy the SQL into ordered files under supabase/migrations.
+- Use timestamped migration filenames so Supabase can track execution.
+- Run supabase db reset for a local rebuild.
+- Run supabase db push for the linked remote project.
+
+Before applying to a production database:
+- Take a backup.
+- Test the full order against a fresh local database.
+- Confirm the PostgreSQL major version matches the Supabase project.
+- Review SECURITY DEFINER functions and grants.
+- Verify RLS policies with anon, authenticated, vendor, admin, and service-role test sessions.
+- Do not run destructive reset commands against production.

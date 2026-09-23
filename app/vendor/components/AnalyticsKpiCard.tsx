@@ -1,0 +1,1 @@
+export function AnalyticsKpiCard({ label, value, available = true }: { label: string; value: number | string | null; available?: boolean }) { return <article className={`analytics-kpi ${available ? '' : 'analytics-kpi-unavailable'}`}><span>{label}</span><strong>{available ? value ?? '—' : '—'}</strong>{available ? null : <small>Backend metric required</small>}</article> }

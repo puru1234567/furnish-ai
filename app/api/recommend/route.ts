@@ -21,12 +21,35 @@ import { createClient } from '@/lib/supabase/server'
  */
 export async function POST(req: NextRequest) {
   const logger = new ApiLogger('POST /api/recommend')
+  let authedUserId: string | null = null
+  let userPreference: {
+    preferred_city?: string | null
+    typical_budget_min?: number | null
+    typical_budget_max?: number | null
+    preferred_styles?: string[] | null
+    preferred_categories?: string[] | null
+  } | null = null
 
   // Attach user ID for per-user prod log files (non-blocking)
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    logger.setUserId(user?.id ?? null)
+    authedUserId = user?.id ?? null
+    logger.setUserId(authedUserId)
+
+    if (authedUserId) {
+      const { data: preferenceRow, error: preferenceError } = await supabase
+        .from('user_preferences')
+        .select('preferred_city, typical_budget_min, typical_budget_max, preferred_styles, preferred_categories')
+        .eq('user_id', authedUserId)
+        .maybeSingle()
+
+      if (preferenceError) {
+        logger.warn('preferences', `Unable to load user preferences: ${preferenceError.message}`)
+      } else {
+        userPreference = preferenceRow
+      }
+    }
   } catch { /* auth resolution must not break the request */ }
 
   try {
@@ -40,6 +63,7 @@ export async function POST(req: NextRequest) {
     // ─ Step 1: Hard filtering ─────────────────────────────────────────────
     const repository = getFurnitureRepository()
     const allItems = await repository.findAll()
+    const allItemMap = new Map(allItems.map(i => [i.id, i]))
     logger.debug('repository', `Loaded ${allItems.length} items from repository`)
 
     // Filter out user-rejected items before scoring — never score items the user dismissed
@@ -162,11 +186,64 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ─ Step 3.5: Preference-aware soft reranking ─────────────────────────
+    const hasPreferenceProfile = Boolean(userPreference)
+    if (hasPreferenceProfile && finalOrder.length > 1) {
+      const preferredCategories = new Set(userPreference?.preferred_categories ?? [])
+      const preferredStyles = new Set(userPreference?.preferred_styles ?? [])
+      const typicalBudgetMin = userPreference?.typical_budget_min ?? null
+      const typicalBudgetMax = userPreference?.typical_budget_max ?? null
+
+      const applyStyleBias = (ctx.stylePreference?.length ?? 0) === 0 && preferredStyles.size > 0
+      const applyCategoryBias = !ctx.furnitureType && preferredCategories.size > 0
+
+      const preferenceBoostById = new Map<string, number>()
+      for (const score of finalOrder) {
+        const item = allItemMap.get(score.itemId)
+        if (!item) continue
+
+        let boost = 0
+
+        if (applyCategoryBias && preferredCategories.has(item.category)) {
+          boost += 2
+        }
+
+        if (applyStyleBias && item.style.some(style => preferredStyles.has(style))) {
+          boost += 2
+        }
+
+        if (typeof typicalBudgetMax === 'number' && typicalBudgetMax > 0) {
+          if (item.price <= typicalBudgetMax) {
+            boost += 2
+          } else if (item.price <= Math.round(typicalBudgetMax * 1.15)) {
+            boost += 1
+          }
+        }
+
+        if (typeof typicalBudgetMin === 'number' && typicalBudgetMin > 0 && item.price < typicalBudgetMin) {
+          boost -= 1
+        }
+
+        // Cap preference influence so current-session signals remain dominant.
+        preferenceBoostById.set(score.itemId, Math.max(-1, Math.min(4, boost)))
+      }
+
+      finalOrder = [...finalOrder].sort((a, b) => {
+        const aAdjusted = a.totalScore + (preferenceBoostById.get(a.itemId) ?? 0)
+        const bAdjusted = b.totalScore + (preferenceBoostById.get(b.itemId) ?? 0)
+        return bAdjusted - aAdjusted
+      })
+
+      contextInsights = [
+        'Ordering lightly tuned using your saved preferences (city/budget/style/category).',
+        ...contextInsights,
+      ].slice(0, 4)
+    }
+
     // ─ Step 4: Hydrate full items and prepare response ────────────────────
-    const itemMap = new Map(allItems.map(i => [i.id, i]))
     const recommended: RecommendedItem[] = finalOrder
       .map(score => {
-        const fullItem = itemMap.get(score.itemId)
+        const fullItem = allItemMap.get(score.itemId)
         if (!fullItem) return null
 
         return {

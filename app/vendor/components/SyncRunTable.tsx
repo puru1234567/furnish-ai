@@ -1,0 +1,3 @@
+import type { SyncRun } from '@/lib/vendor/integrations'
+
+export function SyncRunTable({ runs }: { runs: SyncRun[] }) { return <div className="integration-table-wrap"><table className="integration-table"><caption>Synchronization runs</caption><thead><tr><th>Status</th><th>Domains</th><th>Started</th><th>Records</th><th>Errors</th></tr></thead><tbody>{runs.map((run) => <tr key={run.id}><td>{run.status.replaceAll('_', ' ')}</td><td>{run.domains.join(', ')}</td><td>{run.startedAt ? new Date(run.startedAt).toLocaleString('en-IN') : 'Not started'}</td><td>{run.succeededRecords} / {run.totalRecords}</td><td>{run.errors.length}</td></tr>)}</tbody></table></div> }
