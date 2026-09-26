@@ -90,18 +90,7 @@ export function FindStepRoomDetails({
   onBack,
   onContinue,
 }: FindStepRoomDetailsProps) {
-  const [questionAnimKey, setQuestionAnimKey] = useState(0)
   const [showUploadsView, setShowUploadsView] = useState(false)
-
-  useEffect(() => {
-    setQuestionAnimKey(k => k + 1)
-  }, [questionSubIndex])
-
-  useEffect(() => {
-    if (!allPhotosUploaded) {
-      setShowUploadsView(false)
-    }
-  }, [allPhotosUploaded])
 
   // Format furniture needs into readable labels
   const formatFurnitureNeed = (need: string) => {
@@ -346,7 +335,7 @@ export function FindStepRoomDetails({
                     </button>
                   </div>
                   <div style={{ marginBottom: '12px', fontSize: '12px', color: 'var(--warm-grey)', lineHeight: '1.6', padding: '8px 10px', borderRadius: '8px', background: 'rgba(245,248,244,0.9)', border: '1px solid rgba(74,103,65,0.14)' }}>
-                    If this read looks off, use "View uploads" and tap any photo card to replace it for better room context.
+                    If this read looks off, use &ldquo;View uploads&rdquo; and tap any photo card to replace it for better room context.
                   </div>
                   <div style={{ marginBottom: '16px', fontSize: '14px', color: 'var(--charcoal)', lineHeight: '1.8', fontStyle: 'italic', borderLeft: '3px solid var(--moss)', paddingLeft: '12px' }}>
                     {roomAnalysis.roomSummary}
@@ -470,7 +459,7 @@ export function FindStepRoomDetails({
             )}
 
             {!questionsLoading && question && (
-              <div className="question-single" key={questionAnimKey} style={{ marginTop: '20px' }}>
+              <div className="question-single" key={question.id || questionSubIndex} style={{ marginTop: '20px' }}>
                 <div className="journey-question-meta">
                   <div className="question-counter">Question {questionSubIndex + 1} of {contextualQuestions.length}</div>
                   <div className="journey-question-hint">Tap once to answer</div>

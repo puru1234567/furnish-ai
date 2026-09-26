@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { analyzeRoomWithVision } from './roomVision'
 import { preprocessRoomImages } from '@/lib/ai/image-processing'
 import { ApiLogger } from '@/lib/ai/logger'
@@ -46,8 +46,7 @@ export async function POST(req: NextRequest) {
       duplicatesRemoved: prepResult.result.duplicatesRemoved,
     })
 
-    const apiKey = process.env.GROQ_API_KEY ?? ''
-    const result = await analyzeRoomWithVision(prepResult.result.images, apiKey, {
+    const result = await analyzeRoomWithVision(prepResult.result.images, {
       furnitureType: body.furnitureType,
       roomType: body.roomType,
     })

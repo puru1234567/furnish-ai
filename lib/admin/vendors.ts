@@ -60,25 +60,65 @@ function baseVendor(row: Record<string, unknown>, account: Record<string, unknow
   return { id: text(row, 'id') ?? '', name: text(row, 'full_name') || text(row, 'email') || 'Unnamed vendor', legalName: text(account, 'legal_name'), email: text(row, 'email'), status: (text(account, 'status') ?? 'registered') as VendorStatus, onboardingStatus: text(account, 'onboarding_status'), updatedAt: text(account, 'updated_at') ?? text(row, 'updated_at') ?? new Date(0).toISOString(), createdAt: text(account, 'created_at') ?? text(row, 'created_at') ?? new Date(0).toISOString(), productsCount, documentsCount, usersCount }
 }
 
-export async function listAdminVendors(input: { search?: string; status?: string; sort?: VendorSort; page?: number; pageSize?: number } = {}): Promise<VendorListResult> {
+export async function listAdminVendors(input: {
+  search?: string
+  status?: string
+  sort?: VendorSort
+  page?: number
+  pageSize?: number
+} = {}): Promise<VendorListResult> {
   const { role } = await requireAdmin('manage_vendors')
   const client = serviceClient()
-  const pageSize = Math.min(50, Math.max(1, input.pageSize ?? 20)); const page = Math.max(1, input.page ?? 1)
+  const pageSize = Math.min(50, Math.max(1, input.pageSize ?? 20))
+  const page = Math.max(1, input.page ?? 1)
+  const offset = (page - 1) * pageSize
+
   let query = client.from('profiles').select('id, email, full_name, role, created_at, updated_at', { count: 'exact' }).eq('role', 'vendor')
-  if (input.search?.trim()) { const search = input.search.trim().replaceAll(',', ''); query = query.or(`email.ilike.%${search}%,full_name.ilike.%${search}%`) }
+  if (input.search?.trim()) {
+    const search = input.search.trim().replaceAll(',', '')
+    query = query.or(`email.ilike.%${search}%,full_name.ilike.%${search}%`)
+  }
+
   const { data: profiles, error } = await query
   if (error) throw error
+
   const ids = (profiles ?? []).map((profile) => profile.id)
-  const [{ data: accounts, error: accountError }, { data: onboarding, error: onboardingError }] = ids.length ? await Promise.all([client.from('vendor_accounts').select('*').in('vendor_id', ids), client.from('vendor_onboarding').select('*').in('vendor_id', ids)]) : [{ data: [], error: null }, { data: [], error: null }]
+  const [{ data: accounts, error: accountError }, { data: onboarding, error: onboardingError }] =
+    ids.length > 0
+      ? await Promise.all([
+          client.from('vendor_accounts').select('*').in('vendor_id', ids),
+          client.from('vendor_onboarding').select('*').in('vendor_id', ids),
+        ])
+      : [{ data: [], error: null }, { data: [], error: null }]
+
   if (accountError) throw accountError
   if (onboardingError) throw onboardingError
+
   const accountMap = new Map((accounts ?? []).map((account) => [account.vendor_id, { ...account, ...(onboarding ?? []).find((item) => item.vendor_id === account.vendor_id) }]))
   const onboardingMap = new Map((onboarding ?? []).map((item) => [item.vendor_id, item]))
   let items = (profiles ?? []).map((profile) => baseVendor(profile, { ...onboardingMap.get(profile.id), ...accountMap.get(profile.id) }, null, null, null))
-  if (input.status && VENDOR_STATUSES.includes(input.status as VendorStatus)) items = items.filter((item) => item.status === input.status)
-  items.sort((a, b) => input.sort === 'name_asc' ? a.name.localeCompare(b.name) : input.sort === 'status_asc' ? a.status.localeCompare(b.status) : b.updatedAt.localeCompare(a.updatedAt))
-  const total = items.length; const totalPages = Math.max(1, Math.ceil(total / pageSize))
-  return { items: items.slice((page - 1) * pageSize, page * pageSize), total, page, pageSize, totalPages, role }
+
+  if (input.status && VENDOR_STATUSES.includes(input.status as VendorStatus)) {
+    items = items.filter((item) => item.status === input.status)
+  }
+
+  items.sort((a, b) =>
+    input.sort === 'name_asc' ? a.name.localeCompare(b.name) :
+    input.sort === 'status_asc' ? a.status.localeCompare(b.status) :
+    b.updatedAt.localeCompare(a.updatedAt)
+  )
+
+  const total = items.length
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+
+  return {
+    items: items.slice(offset, offset + pageSize),
+    total,
+    page,
+    pageSize,
+    totalPages,
+    role,
+  }
 }
 
 export async function getAdminVendor(vendorId: string): Promise<VendorDetail> {

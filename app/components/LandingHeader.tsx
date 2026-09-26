@@ -43,28 +43,30 @@ export function LandingHeader({
     ? (() => {
         const items: MenuItem[] = [
           { href: '/find', label: 'Start matching', index: '01', cta: true },
-          { href: '/saved', label: 'Saved', index: '02' },
+          { href: '/visualizer', label: 'Spatial Studio', index: '02' },
+          { href: '/saved', label: 'Saved', index: '03' },
         ]
 
         if (hasSavedResults) {
-          items.push({ href: '/result', label: 'Saved results', index: '03' })
+          items.push({ href: '/result', label: 'Saved results', index: '04' })
         }
 
-        items.push({ href: '/account', label: 'Account', index: hasSavedResults ? '04' : '03' })
+        items.push({ href: '/account', label: 'Account', index: hasSavedResults ? '05' : '04' })
 
         if (role === 'vendor' || role === 'admin') {
-          items.push({ href: '/vendor', label: 'Vendor studio', index: hasSavedResults ? '05' : '04' })
+          items.push({ href: '/vendor', label: 'Vendor studio', index: hasSavedResults ? '06' : '05' })
         }
 
         if (role === 'admin') {
-          items.push({ href: '/admin', label: 'Admin console', index: hasSavedResults ? '06' : '05' })
+          items.push({ href: '/admin', label: 'Admin console', index: hasSavedResults ? '07' : '06' })
         }
 
         return items
       })()
     : [
         { href: '#how', label: 'The Journey', index: '01' },
-        { href: '/find', label: 'Start matching', index: '02', cta: true },
+        { href: '/visualizer', label: 'Spatial Studio', index: '02' },
+        { href: '/find', label: 'Start matching', index: '03', cta: true },
       ]
 
   useEffect(() => {

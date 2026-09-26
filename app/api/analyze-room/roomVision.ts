@@ -1,6 +1,6 @@
 /**
  * roomVision.ts
- * Dedicated Groq Vision module for multi-angle room analysis.
+ * Dedicated Gemini Vision module for multi-angle room analysis.
  * Moved system prompt to lib/ai/prompts/room-analysis-prompt.ts
  */
 
@@ -262,7 +262,6 @@ function valueToStyleProfile(value: unknown): { id: string; description: string 
 
 export async function analyzeRoomWithVision(
   base64Images: string[], // array of base64 data-url strings (1–4)
-  apiKey: string,
   options: AnalyzeRoomOptions = {}
 ): Promise<RoomAnalysisResult> {
   if (!process.env.GEMINI_API_KEY) throw new Error('Missing GEMINI_API_KEY')

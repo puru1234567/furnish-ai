@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { upsertOwnProfileName } from '@/lib/supabase/profiles'
@@ -31,16 +31,19 @@ export function AuthModal({
   const [success, setSuccess] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  useEffect(() => {
-    if (!isOpen) {
-      setError(null)
-      setSuccess(null)
-      setFullName('')
-      setEmail('')
-      setPassword('')
-      setConfirmPassword('')
-    }
-  }, [isOpen])
+  const resetForm = useCallback(() => {
+    setError(null)
+    setSuccess(null)
+    setFullName('')
+    setEmail('')
+    setPassword('')
+    setConfirmPassword('')
+  }, [])
+
+  const handleClose = useCallback(() => {
+    resetForm()
+    onClose()
+  }, [onClose, resetForm])
 
   useEffect(() => {
     if (!isOpen) return
@@ -57,12 +60,12 @@ export function AuthModal({
     if (!isOpen) return
 
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') handleClose()
     }
 
     window.addEventListener('keydown', handleEscape)
     return () => window.removeEventListener('keydown', handleEscape)
-  }, [isOpen, onClose])
+  }, [isOpen, handleClose])
 
   if (!isOpen) return null
 
@@ -181,7 +184,7 @@ export function AuthModal({
         type="button"
         aria-label="Close authentication window"
         className="auth-modal-backdrop"
-        onClick={onClose}
+        onClick={handleClose}
       />
 
       <div className="auth-modal-panel">
@@ -218,7 +221,7 @@ export function AuthModal({
 
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="auth-modal-close"
               aria-label="Close authentication window"
             >

@@ -54,9 +54,7 @@ export interface GenerateQuestionsResponse {
 // /api/recommend
 // ─────────────────────────────────────────────────────────────
 
-export interface RecommendRequest extends UserContext {
-  // UserContext is the request type
-}
+export type RecommendRequest = UserContext
 
 export interface RecommendResponse {
   summary: string

@@ -12,6 +12,8 @@ export interface FurnitureFilter {
   brand?: string
   tags?: string[]
   deliveryAvailable?: boolean
+  limit?: number
+  offset?: number
 }
 
 /**

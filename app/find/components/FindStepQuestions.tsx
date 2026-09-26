@@ -50,11 +50,6 @@ export function FindStepQuestions({
 }: FindStepQuestionsProps) {
   const question = contextualQuestions[questionSubIndex]
   const canContinueManually = contextualQuestions.length === 0 || !!questionsError
-  const [questionAnimKey, setQuestionAnimKey] = useState(0)
-
-  useEffect(() => {
-    setQuestionAnimKey(current => current + 1)
-  }, [questionSubIndex])
 
   return (
     <div className="page active">
@@ -205,7 +200,7 @@ export function FindStepQuestions({
         {!questionsLoading && question && (
           <section className="find-section-group find-section-group--compact">
             <div className="find-group-helper">Tap one option. Your answer is saved immediately.</div>
-            <div className="question-single" key={questionAnimKey}>
+            <div className="question-single" key={question.id || questionSubIndex}>
             <div className="journey-question-meta">
               <div className="question-counter">Question {questionSubIndex + 1} of {contextualQuestions.length}</div>
               <div className="journey-question-hint">Tap once to answer</div>

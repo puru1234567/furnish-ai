@@ -159,6 +159,7 @@ export function Hero({ displayName, onStartRoomRead }: HeroProps) {
 					<Reveal delay={0.08}>
 						<div className="hero-cta">
 							<button type="button" className="primary" onClick={onStartRoomRead}>Start your room read</button>
+							<Link href="/visualizer" className="secondary">📐 Spatial Studio</Link>
 							<Link href="#how" className="secondary">See the journey</Link>
 						</div>
 					</Reveal>

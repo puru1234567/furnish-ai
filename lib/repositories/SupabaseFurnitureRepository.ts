@@ -2,7 +2,7 @@
 // Postgres/Supabase implementation of IFurnitureRepository
 // Follows Repository pattern and Dependency Inversion principle
 
-import type { FurnitureItem, FurnitureCategory } from '@/lib/types'
+import type { FurnitureItem, FurnitureCategory, StyleTag } from '@/lib/types'
 import type { IFurnitureRepository, FurnitureFilter } from './IFurnitureRepository'
 
 interface SupabaseRow {
@@ -75,7 +75,7 @@ export class SupabaseFurnitureRepository implements IFurnitureRepository {
       brand: row.brand,
       cities: row.cities,
       deliveryAvailable: row.delivery_available,
-      style: row.style_tags as any,
+      style: (row.style_tags ?? []) as StyleTag[],
       material: row.material,
       dimensions: {
         width: Number(row.width_cm) ?? 0,
@@ -94,41 +94,6 @@ export class SupabaseFurnitureRepository implements IFurnitureRepository {
       reviewCount: Number(row.review_count) ?? 0,
       description: row.description ?? '',
       tags: row.product_tags ?? [],
-    }
-  }
-
-  /**
-   * Execute a query against Supabase REST API
-   */
-  private async query<T>(sql: string, values: unknown[] = []): Promise<T[]> {
-    const apiUrl = `${this.supabaseUrl}/rest/v1/rpc`
-    
-    // For now, use simple fetch-based approach
-    // In production, use @supabase/supabase-js client for better abstractions
-    try {
-      const response = await fetch(`${this.supabaseUrl}/rest/v1/products`, {
-        method: 'GET',
-        headers: {
-          apikey: this.supabaseAnonKey,
-          Authorization: `Bearer ${this.supabaseAnonKey}`,
-          'Content-Type': 'application/json',
-        },
-      })
-
-      if (!response.ok) {
-        const errorBody = await response.text()
-        console.error('[SupabaseFurnitureRepository] query failed', {
-          status: response.status,
-          error: this.formatErrorPreview(errorBody),
-        })
-        return []
-      }
-
-      const data: T[] = await response.json()
-      return data
-    } catch (error) {
-      console.error(`[SupabaseFurnitureRepository] query threw:`, error)
-      return []
     }
   }
 
@@ -200,6 +165,16 @@ export class SupabaseFurnitureRepository implements IFurnitureRepository {
       if (filter.inStockOnly) params.append('in_stock', 'eq.true')
       if (filter.brand) params.append('brand', `eq.${filter.brand}`)
       if (filter.deliveryAvailable) params.append('delivery_available', 'eq.true')
+      if (filter.city) {
+        // Push down city containment in PostgREST: matches city or pan-India delivery
+        params.append('or', `(cities.cs.{"${filter.city}"},cities.cs.{"All India"})`)
+      }
+      if (filter.limit !== undefined && filter.limit > 0) {
+        params.append('limit', String(filter.limit))
+      }
+      if (filter.offset !== undefined && filter.offset > 0) {
+        params.append('offset', String(filter.offset))
+      }
 
       const response = await fetch(
         `${this.supabaseUrl}/rest/v1/products?${params.toString()}`,
@@ -222,7 +197,7 @@ export class SupabaseFurnitureRepository implements IFurnitureRepository {
 
       const rows: SupabaseRow[] = await response.json()
       return rows
-        .filter(row => !filter.city || (row.cities ?? []).includes(filter.city))
+        .filter(row => !filter.city || (row.cities ?? []).includes(filter.city) || (row.cities ?? []).includes('All India'))
         .filter(row => !filter.tags || filter.tags.length === 0 || filter.tags.every(tag => (row.product_tags ?? []).includes(tag)))
         .map(row => this.rowToItem(row))
     } catch (error) {
@@ -326,18 +301,22 @@ export class SupabaseFurnitureRepository implements IFurnitureRepository {
         return []
       }
 
-      const rows: any[] = await response.json()
+      const rows: Array<Record<string, unknown>> = await response.json()
 
       if (field === 'city') {
         const cities = new Set<string>()
         rows.forEach(row => {
-          (row.cities ?? []).forEach((city: string) => cities.add(city))
+          const rowCities = Array.isArray(row.cities) ? row.cities : []
+          rowCities.forEach((city: unknown) => {
+            if (typeof city === 'string') cities.add(city)
+          })
         })
         return Array.from(cities).sort()
       } else {
         const values = new Set<string>()
         rows.forEach(row => {
-          if (row[field]) values.add(row[field])
+          const val = row[field]
+          if (typeof val === 'string') values.add(val)
         })
         return Array.from(values).sort()
       }

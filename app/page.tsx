@@ -24,7 +24,7 @@ export default function HomePage() {
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const [authMode, setAuthMode] = useState<AuthMode>('login')
   const [nextPath, setNextPath] = useState('/find')
-  const [savedResults, setSavedResults] = useState<SavedResultSummary | null>(null)
+  const [savedResults, setSavedResults] = useState<SavedResultSummary | null>(() => !authEnabled ? readSavedResultSummary() : null)
   const [toast, setToast] = useState<ToastState>(null)
 
   async function syncUserState(currentUser: User | null) {
@@ -43,13 +43,7 @@ export default function HomePage() {
   }
 
   useEffect(() => {
-    if (!authEnabled) {
-      setUser(null)
-      setProfile(null)
-      setRole('user')
-      setSavedResults(readSavedResultSummary())
-      return
-    }
+    if (!authEnabled) return
 
     supabase.auth.getUser().then(({ data: { user: currentUser } }) => {
       void syncUserState(currentUser)
@@ -70,27 +64,6 @@ export default function HomePage() {
     return () => window.clearTimeout(timer)
   }, [toast])
 
-  useEffect(() => {
-    if (!authEnabled) {
-      clearAuthQueryParams()
-      setAuthModalOpen(false)
-      return
-    }
-
-    const params = new URLSearchParams(window.location.search)
-    const auth = params.get('auth')
-    const next = params.get('next')
-
-    if (auth === 'login' || auth === 'signup') {
-      setAuthMode(auth)
-      setAuthModalOpen(true)
-    }
-
-    if (next) {
-      setNextPath(next)
-    }
-  }, [authEnabled])
-
   function clearAuthQueryParams() {
     const params = new URLSearchParams(window.location.search)
     params.delete('auth')
@@ -98,6 +71,30 @@ export default function HomePage() {
     const query = params.toString()
     window.history.replaceState({}, '', query ? `/?${query}` : '/')
   }
+
+  useEffect(() => {
+    if (!authEnabled) {
+      clearAuthQueryParams()
+      return
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      const params = new URLSearchParams(window.location.search)
+      const auth = params.get('auth')
+      const next = params.get('next')
+
+      if (auth === 'login' || auth === 'signup') {
+        setAuthMode(auth)
+        setAuthModalOpen(true)
+      }
+
+      if (next) {
+        setNextPath(next)
+      }
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [authEnabled])
 
   function openAuthModal(mode: AuthMode, requestedPath = '/find') {
     if (!authEnabled) {
@@ -224,6 +221,7 @@ export default function HomePage() {
               <div className="home-footer-link-column">
                 <span className="home-footer-label">Product</span>
                 <a href="/find" className="home-footer-link">Find Furniture</a>
+                <a href="/visualizer" className="home-footer-link">Spatial Studio</a>
                 <a href="/saved" className="home-footer-link">Saved</a>
               </div>
 

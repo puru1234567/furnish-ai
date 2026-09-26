@@ -21,18 +21,89 @@ function numberValue(row: Record<string, unknown>, key: string) { const value = 
 function statusOf(row: Record<string, unknown>): AdminProductStatus { const status = text(row, 'status') ?? 'draft'; const lifecycle = text(row, 'lifecycle_status') ?? 'inactive'; if (status === 'archived' || lifecycle === 'archived') return 'archived'; if (status === 'approved' && lifecycle === 'active') return 'published'; if (status === 'approved' && lifecycle === 'inactive') return 'inactive'; if (status === 'vendor_fix_required') return 'rejected'; return status as AdminProductStatus }
 function mapProduct(row: Record<string, unknown>, vendorName: string): AdminProduct { return { id: text(row, 'id') ?? '', vendorId: text(row, 'vendor_id') ?? '', vendorName, name: text(row, 'name') ?? '', sku: text(row, 'sku') ?? '', category: text(row, 'category') ?? '', description: text(row, 'description') ?? '', price: numberValue(row, 'price'), stock: numberValue(row, 'stock'), status: statusOf(row), rawStatus: text(row, 'status') ?? 'draft', lifecycleStatus: text(row, 'lifecycle_status') ?? 'inactive', createdAt: text(row, 'created_at') ?? new Date(0).toISOString(), updatedAt: text(row, 'updated_at') ?? new Date(0).toISOString(), rejectionReason: text(row, 'rejection_reason') }
 }
-function rawStatusFilter(status: string): { status?: string; lifecycle?: string } { if (status === 'published') return { status: 'approved', lifecycle: 'active' }; if (status === 'inactive') return { status: 'approved', lifecycle: 'inactive' }; if (status === 'archived') return { lifecycle: 'archived' }; if (status === 'rejected') return { status: 'rejected' }; return { status } }
+function rawStatusFilter(status: string): { status?: string; lifecycle?: string; pending?: boolean } { if (!status) return {}; if (status === 'pending') return { pending: true }; if (status === 'published') return { status: 'approved', lifecycle: 'active' }; if (status === 'inactive') return { status: 'approved', lifecycle: 'inactive' }; if (status === 'archived') return { lifecycle: 'archived' }; if (status === 'rejected') return { status: 'rejected' }; return { status } }
 async function audit(client: AdminClient, actorId: string, productId: string, vendorId: string, action: string, metadata: Record<string, unknown>) { const { error } = await client.from('admin_audit_events').insert({ actor_id: actorId, action: `catalog.${action}`, entity_type: 'product', entity_id: productId, metadata: { ...metadata, vendorId } }); if (error) throw new Error('AUDIT_WRITE_FAILED') }
 
-export async function listAdminProducts(input: { search?: string; sku?: string; vendorId?: string; category?: string; status?: string; createdFrom?: string; createdTo?: string; minPrice?: number; maxPrice?: number; sort?: CatalogSort; page?: number; pageSize?: number } = {}): Promise<CatalogListResult> {
-  const { role } = await requireAdmin('review_products'); const client = db(); const pageSize = Math.min(50, Math.max(1, input.pageSize ?? 20)); const page = Math.max(1, input.page ?? 1)
-  let query = client.from('vendor_products').select('*', { count: 'exact' }); if (input.vendorId) query = query.eq('vendor_id', input.vendorId); if (input.category) query = query.eq('category', input.category); if (input.sku?.trim()) query = query.ilike('sku', `%${input.sku.trim()}%`); if (input.search?.trim()) { const search = input.search.trim().replaceAll(',', ''); query = query.or(`name.ilike.%${search}%,sku.ilike.%${search}%,description.ilike.%${search}%`) }; if (input.createdFrom) query = query.gte('created_at', input.createdFrom); if (input.createdTo) query = query.lte('created_at', input.createdTo); if (input.minPrice !== undefined) query = query.gte('price', input.minPrice); if (input.maxPrice !== undefined) query = query.lte('price', input.maxPrice)
-  const raw = rawStatusFilter(input.status ?? ''); if (raw.status) query = query.eq('status', raw.status); if (raw.lifecycle) query = query.eq('lifecycle_status', raw.lifecycle)
-  const order: [string, boolean] = input.sort === 'price_asc' ? ['price', true] : input.sort === 'price_desc' ? ['price', false] : input.sort === 'name_asc' ? ['name', true] : input.sort === 'created_desc' ? ['created_at', false] : ['updated_at', false]; const { data, count, error } = await query.order(order[0], { ascending: order[1] })
+export async function listAdminProducts(input: {
+  search?: string
+  sku?: string
+  vendorId?: string
+  category?: string
+  status?: string
+  createdFrom?: string
+  createdTo?: string
+  minPrice?: number
+  maxPrice?: number
+  sort?: CatalogSort
+  page?: number
+  pageSize?: number
+} = {}): Promise<CatalogListResult> {
+  const { role } = await requireAdmin('review_products')
+  const client = db()
+  const pageSize = Math.min(50, Math.max(1, input.pageSize ?? 20))
+  const page = Math.max(1, input.page ?? 1)
+  const offset = (page - 1) * pageSize
+
+  let query = client.from('vendor_products').select('*', { count: 'exact' })
+
+  if (input.vendorId) query = query.eq('vendor_id', input.vendorId)
+  if (input.category) query = query.eq('category', input.category)
+  if (input.sku?.trim()) query = query.ilike('sku', `%${input.sku.trim()}%`)
+  if (input.search?.trim()) {
+    const search = input.search.trim().replaceAll(',', '')
+    query = query.or(`name.ilike.%${search}%,sku.ilike.%${search}%,description.ilike.%${search}%`)
+  }
+  if (input.createdFrom) query = query.gte('created_at', input.createdFrom)
+  if (input.createdTo) query = query.lte('created_at', input.createdTo)
+  if (input.minPrice !== undefined) query = query.gte('price', input.minPrice)
+  if (input.maxPrice !== undefined) query = query.lte('price', input.maxPrice)
+
+  const raw = rawStatusFilter(input.status ?? '')
+  if (raw.pending) {
+    query = query.or('status.eq.submitted,status.eq.under_review,status.eq.resubmitted')
+  } else {
+    if (raw.status) query = query.eq('status', raw.status)
+    if (raw.lifecycle) query = query.eq('lifecycle_status', raw.lifecycle)
+  }
+
+  const order: [string, boolean] =
+    input.sort === 'price_asc' ? ['price', true] :
+    input.sort === 'price_desc' ? ['price', false] :
+    input.sort === 'name_asc' ? ['name', true] :
+    input.sort === 'created_desc' ? ['created_at', false] :
+    ['updated_at', false]
+
+  // PostgREST push-down pagination: range is 0-indexed inclusive
+  query = query.order(order[0], { ascending: order[1] }).range(offset, offset + pageSize - 1)
+
+  const { data, count, error } = await query
   if (error) throw error
-  const rows = data ?? []; const vendorIds = [...new Set(rows.map((row) => row.vendor_id))]; const [{ data: vendors }, { data: allProducts }] = await Promise.all([vendorIds.length ? client.from('profiles').select('id, full_name, email').in('id', vendorIds) : { data: [] }, client.from('vendor_products').select('category, vendor_id')])
-  const vendorMap = new Map((vendors ?? []).map((vendor) => [vendor.id, vendor.full_name || vendor.email || 'Unnamed vendor'])); const items = rows.map((row) => mapProduct(row, vendorMap.get(row.vendor_id) ?? 'Unknown vendor')); const total = count ?? items.length; const totalPages = Math.max(1, Math.ceil(total / pageSize))
-  return { items: items.slice((page - 1) * pageSize, page * pageSize), total, page, pageSize, totalPages, role, categories: [...new Set((allProducts ?? []).map((item) => item.category))].sort(), vendors: (vendors ?? []).map((vendor) => ({ id: vendor.id, name: vendor.full_name || vendor.email || 'Unnamed vendor' })) }
+
+  const rows = data ?? []
+  const vendorIds = [...new Set(rows.map((row) => row.vendor_id))]
+
+  const [{ data: vendors }, { data: distinctCategories }] = await Promise.all([
+    vendorIds.length > 0
+      ? client.from('profiles').select('id, full_name, email').in('id', vendorIds)
+      : { data: [] },
+    client.from('vendor_products').select('category'),
+  ])
+
+  const vendorMap = new Map((vendors ?? []).map((v) => [v.id, v.full_name || v.email || 'Unnamed vendor']))
+  const items = rows.map((row) => mapProduct(row, vendorMap.get(row.vendor_id) ?? 'Unknown vendor'))
+  const total = count ?? items.length
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+
+  return {
+    items,
+    total,
+    page,
+    pageSize,
+    totalPages,
+    role,
+    categories: [...new Set((distinctCategories ?? []).map((item) => item.category))].sort(),
+    vendors: (vendors ?? []).map((v) => ({ id: v.id, name: v.full_name || v.email || 'Unnamed vendor' })),
+  }
 }
 
 export async function getAdminProduct(productId: string): Promise<CatalogDetail> { await requireAdmin('review_products'); const client = db(); const [{ data: product, error }, { data: history }, { data: changes }] = await Promise.all([client.from('vendor_products').select('*').eq('id', productId).maybeSingle(), client.from('vendor_product_approval_events').select('id, status, comment, requested_changes, changed_by, changed_at').eq('product_id', productId).order('changed_at', { ascending: false }), client.from('admin_product_change_events').select('id, field_name, previous_value, new_value, reason, actor_id, created_at').eq('product_id', productId).order('created_at', { ascending: false })]); if (error) throw error; if (!product) throw new Error('PRODUCT_NOT_FOUND'); const { data: vendor } = await client.from('profiles').select('full_name, email').eq('id', product.vendor_id).maybeSingle(); return { ...mapProduct(product, vendor?.full_name || vendor?.email || 'Unknown vendor'), approvalHistory: (history ?? []).map((event) => ({ id: event.id, status: event.status, comment: event.comment, requestedChanges: event.requested_changes ?? [], changedBy: event.changed_by, changedAt: event.changed_at })), changeHistory: (changes ?? []).map((event) => ({ id: event.id, field: event.field_name, previousValue: event.previous_value, newValue: event.new_value, reason: event.reason, actorId: event.actor_id, createdAt: event.created_at })) } }

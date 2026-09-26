@@ -63,7 +63,7 @@ export default function FindPage() {
   // Form state
   const router = useRouter()
   const authEnabled = isAuthEnabled()
-  const microSessionId = useRef(crypto.randomUUID()).current
+  const [microSessionId] = useState(() => crypto.randomUUID())
   const supabase = createClient()
   const [userId, setUserId] = useState<string | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)

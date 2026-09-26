@@ -49,7 +49,7 @@ export function useScrollDepthTracking(page: string) {
 }
 
 export function useSessionDurationTracking(page: string) {
-  const startedAt = useRef<number>(Date.now())
+  const startedAt = useRef<number>(0)
 
   useEffect(() => {
     startedAt.current = Date.now()

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { trackEvent } from '@/lib/analytics/trackEvent'
 
 interface PassiveContext {
@@ -13,7 +13,7 @@ interface PassiveContext {
  */
 export function usePassiveContext() {
   const [passiveCtx, setPassiveCtx] = useState<PassiveContext | null>(null)
-  const sessionId = useRef(crypto.randomUUID()).current
+  const [sessionId] = useState(() => crypto.randomUUID())
 
   useEffect(() => {
     const ua = navigator.userAgent
@@ -32,7 +32,9 @@ export function usePassiveContext() {
 
     const device = isMobile ? 'Mobile' : 'Desktop'
 
-    setPassiveCtx({ device, timeLabel, isReturn, refSource })
+    const frame = window.requestAnimationFrame(() => {
+      setPassiveCtx({ device, timeLabel, isReturn, refSource })
+    })
 
     trackEvent(sessionId, 'passive_context', {
       device,
@@ -41,6 +43,8 @@ export function usePassiveContext() {
       isReturn,
       referrerSource: refSource,
     })
+
+    return () => window.cancelAnimationFrame(frame)
   }, [sessionId])
 
   return passiveCtx

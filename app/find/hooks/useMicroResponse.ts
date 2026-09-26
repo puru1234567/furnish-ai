@@ -23,7 +23,7 @@ export function useMicroResponse(sessionId: string) {
       setMicroResponse(null)
       microResponseTimeoutRef.current = null
     }, 3200)
-  }, [])
+  }, [sessionId])
 
   // Cleanup timeout on unmount
   useEffect(() => () => {

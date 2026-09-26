@@ -18,8 +18,8 @@ import type { SortOption } from '@/lib/utils/sort-items'
 import type { FormData } from '../find/find-page-model'
 import { readStoredResults, saveStoredResults, type StoredResults } from '@/lib/utils/saved-results'
 import { ResultsDisplay } from '../find/components/ResultsDisplay'
+import { RoomVisualizerPreview } from '../components/visualizer/RoomVisualizerPreview'
 import { DEFAULTS } from '../find/find-page-constants'
-import { fmt, getFurnitureLabel } from '../find/find-page-utils'
 
 export default function ResultPage() {
   const router = useRouter()
@@ -28,6 +28,7 @@ export default function ResultPage() {
   const sessionId: string | null = null
   const [data, setData] = useState<StoredResults | null>(null)
   const [hydrated, setHydrated] = useState(false)
+  const [showVisualizer, setShowVisualizer] = useState(false)
 
   // Auth guard
   useEffect(() => {
@@ -47,15 +48,18 @@ export default function ResultPage() {
   const [sortBy, setSortBy] = useState<SortOption>('relevance')
 
   useEffect(() => {
-    try {
-      const parsed = readStoredResults()
-      if (parsed) {
-        setData(parsed)
+    const frame = window.requestAnimationFrame(() => {
+      try {
+        const parsed = readStoredResults()
+        if (parsed) {
+          setData(parsed)
+        }
+      } catch {
+        // bad JSON — fall through to empty state
       }
-    } catch {
-      // bad JSON — fall through to empty state
-    }
-    setHydrated(true)
+      setHydrated(true)
+    })
+    return () => window.cancelAnimationFrame(frame)
   }, [])
 
   const toggleCompare = (id: string) =>
@@ -192,27 +196,34 @@ export default function ResultPage() {
     )
   }
 
-  const archetypeLabel = data.meta.archetypeLabel
-  const leadingInsight = data.meta.contextInsights[0] ?? data.meta.flaggedIssues[0] ?? null
-  const storySignals = [
-    data.form?.furnitureType ? getFurnitureLabel(data.form.furnitureType) : null,
-    data.form?.roomType,
-    data.form?.budget ? fmt(data.form.budget) : null,
-    data.roomAnalysis ? 'AI room read' : null,
-    Object.keys(data.form?.contextualAnswers ?? {}).length > 0
-      ? `${Object.keys(data.form.contextualAnswers).length} preference signals`
-      : null,
-  ].filter(Boolean) as string[]
-
   return (
     <>
       <header className="site-header">
         <div className="logo">Furnish<span>AI</span></div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <button
+            type="button"
+            className="btn-skip"
+            onClick={() => setShowVisualizer(prev => !prev)}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+          >
+            <span>📐</span> {showVisualizer ? 'Hide Blueprint' : '2D Room Blueprint'}
+          </button>
           {authEnabled ? <Link href="/account" className="btn-skip">Account</Link> : null}
           <Link href="/find" className="btn-skip">← New search</Link>
         </div>
       </header>
+
+      {showVisualizer && (
+        <div style={{ maxWidth: '1180px', margin: '20px auto 0', padding: '0 20px' }}>
+          <RoomVisualizerPreview
+            roomType={data.form?.roomType as RoomType}
+            roomWidthFt={data.roomAnalysis?.estimatedWidthFt ?? 14}
+            roomDepthFt={data.roomAnalysis?.estimatedDepthFt ?? 12}
+            placedItems={data.results}
+          />
+        </div>
+      )}
 
       <ResultsDisplay
         results={data.results}

@@ -21,11 +21,11 @@ export class InMemoryFurnitureRepository implements IFurnitureRepository {
   }
 
   async findByCriteria(filter: FurnitureFilter): Promise<FurnitureItem[]> {
-    return this.data.filter(item => {
+    let items = this.data.filter(item => {
       if (filter.category && item.category !== filter.category) return false
       if (filter.priceMin !== undefined && item.price < filter.priceMin) return false
       if (filter.priceMax !== undefined && item.price > filter.priceMax) return false
-      if (filter.city && !item.cities.includes(filter.city)) return false
+      if (filter.city && !item.cities.includes(filter.city) && !item.cities.includes('All India')) return false
       if (filter.inStockOnly && !item.inStock) return false
       if (filter.brand && item.brand !== filter.brand) return false
       if (filter.deliveryAvailable && !item.deliveryAvailable) return false
@@ -35,6 +35,15 @@ export class InMemoryFurnitureRepository implements IFurnitureRepository {
       }
       return true
     })
+
+    if (filter.offset !== undefined && filter.offset > 0) {
+      items = items.slice(filter.offset)
+    }
+    if (filter.limit !== undefined && filter.limit > 0) {
+      items = items.slice(0, filter.limit)
+    }
+
+    return items
   }
 
   async findAll(): Promise<FurnitureItem[]> {

@@ -8,12 +8,19 @@ export function usePageNavigation() {
   const [questionSubIndex, setQuestionSubIndex] = useState(0)
   const stepRef = useRef(0)
   const questionSubIndexRef = useRef(0)
-  const stepEnteredAt = useRef<number>(Date.now())
+  const stepEnteredAt = useRef<number>(0)
   const hesitations = useRef<Record<number, number>>({})
 
-  const next = useCallback(() => {
-    hesitations.current[stepRef.current] = (Date.now() - stepEnteredAt.current) / 1000
+  useEffect(() => {
     stepEnteredAt.current = Date.now()
+  }, [])
+
+  const next = useCallback(() => {
+    const now = Date.now()
+    if (stepEnteredAt.current > 0) {
+      hesitations.current[stepRef.current] = (now - stepEnteredAt.current) / 1000
+    }
+    stepEnteredAt.current = now
     setStep(s => s + 1)
   }, [])
 

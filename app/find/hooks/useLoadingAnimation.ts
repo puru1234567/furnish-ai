@@ -7,17 +7,17 @@ export function useLoadingAnimation(isLoading: boolean) {
   const [loadingStageIndex, setLoadingStageIndex] = useState(0)
 
   useEffect(() => {
-    if (!isLoading) {
-      setLoadingStageIndex(0)
-      return
-    }
+    if (!isLoading) return
 
     const intervalId = window.setInterval(() => {
       setLoadingStageIndex(prev => (prev + 1) % 4)
     }, 1600)
 
-    return () => window.clearInterval(intervalId)
+    return () => {
+      window.clearInterval(intervalId)
+      setLoadingStageIndex(0)
+    }
   }, [isLoading])
 
-  return loadingStageIndex
+  return isLoading ? loadingStageIndex : 0
 }

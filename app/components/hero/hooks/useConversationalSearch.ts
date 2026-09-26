@@ -113,7 +113,6 @@ export function useConversationalSearch({
   const [recentSearches, setRecentSearches] = useState<string[]>([])
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState(0)
-  const autocompleteRef = useRef<string[]>([])
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -124,16 +123,19 @@ export function useConversationalSearch({
   }, [examples.length])
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(recentStorageKey)
-      if (!raw) return
-      const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed)) {
-        setRecentSearches(parsed.filter((value) => typeof value === "string"))
+    const frame = window.requestAnimationFrame(() => {
+      try {
+        const raw = window.localStorage.getItem(recentStorageKey)
+        if (!raw) return
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) {
+          setRecentSearches(parsed.filter((value) => typeof value === "string"))
+        }
+      } catch {
+        setRecentSearches([])
       }
-    } catch {
-      setRecentSearches([])
-    }
+    })
+    return () => window.cancelAnimationFrame(frame)
   }, [recentStorageKey])
 
   const filteredSuggestions = useMemo(() => {
@@ -154,10 +156,7 @@ export function useConversationalSearch({
     return [...startsWith, ...includes].slice(0, 6)
   }, [examples, query, recentSearches])
 
-  useEffect(() => {
-    autocompleteRef.current = filteredSuggestions
-    setActiveIndex((prev) => Math.min(prev, Math.max(0, filteredSuggestions.length - 1)))
-  }, [filteredSuggestions])
+  const boundedActiveIndex = Math.min(activeIndex, Math.max(0, filteredSuggestions.length - 1))
 
   function openDropdown() {
     setDropdownOpen(true)
@@ -199,28 +198,28 @@ export function useConversationalSearch({
 
     if (event.key === "ArrowDown") {
       event.preventDefault()
-      if (!autocompleteRef.current.length) return
-      setActiveIndex((prev) => (prev + 1) % autocompleteRef.current.length)
+      if (!filteredSuggestions.length) return
+      setActiveIndex((prev) => (prev + 1) % filteredSuggestions.length)
       return
     }
 
     if (event.key === "ArrowUp") {
       event.preventDefault()
-      if (!autocompleteRef.current.length) return
-      setActiveIndex((prev) => (prev - 1 + autocompleteRef.current.length) % autocompleteRef.current.length)
+      if (!filteredSuggestions.length) return
+      setActiveIndex((prev) => (prev - 1 + filteredSuggestions.length) % filteredSuggestions.length)
       return
     }
 
-    if (event.key === "Enter" && dropdownOpen && autocompleteRef.current[activeIndex]) {
+    if (event.key === "Enter" && dropdownOpen && filteredSuggestions[activeIndex]) {
       event.preventDefault()
-      applySuggestion(autocompleteRef.current[activeIndex])
+      applySuggestion(filteredSuggestions[activeIndex])
       return
     }
 
-    if (event.key === "Tab" && dropdownOpen && autocompleteRef.current[activeIndex]) {
+    if (event.key === "Tab" && dropdownOpen && filteredSuggestions[activeIndex]) {
       // Smart autocomplete: allow keyboard-first completion using Tab.
       event.preventDefault()
-      applySuggestion(autocompleteRef.current[activeIndex], { shouldStore: false })
+      applySuggestion(filteredSuggestions[activeIndex], { shouldStore: false })
       return
     }
 
@@ -235,7 +234,7 @@ export function useConversationalSearch({
     clearRecentSearches,
     dropdownOpen,
     filteredSuggestions,
-    activeIndex,
+    activeIndex: boundedActiveIndex,
     setActiveIndex,
     openDropdown,
     closeDropdown,

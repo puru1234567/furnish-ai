@@ -1,11 +1,14 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
-import { UserContext, RecommendedItem } from '@/lib/types'
+import { NextRequest, NextResponse } from 'next/server'
+import { UserContext, RecommendedItem, FurnitureCategory, StyleTag } from '@/lib/types'
 import { callGroqChat } from '@/lib/ai/groq-client'
 import { filterAndRankItems } from '@/lib/ai/item-filter'
 import { rankingPipeline } from '@/lib/ai/ranking'
 import { getFurnitureRepository } from '@/lib/repositories'
 import { ApiLogger } from '@/lib/ai/logger'
 import { createClient } from '@/lib/supabase/server'
+import { computePersonalizedScore } from '@/lib/personalization/scoring'
+import { createEmptyTasteProfile } from '@/lib/personalization/profileBuilder'
+import type { TasteProfile } from '@/lib/personalization/types'
 
 /**
  * Recommendation endpoint
@@ -60,11 +63,30 @@ export async function POST(req: NextRequest) {
       city: ctx.city,
     })
 
-    // ─ Step 1: Hard filtering ─────────────────────────────────────────────
+    // ─ Step 1: Database query push-down & candidate retrieval ─────────────
     const repository = getFurnitureRepository()
-    const allItems = await repository.findAll()
+    const budget = ctx.budget
+    const budgetMax = ctx.budgetMax ?? Math.round(budget * 1.4)
+    const stretchCap = Math.max(budget, budgetMax)
+
+    // Push down category, price ceiling, and city filters to database/repository
+    let candidateItems = await repository.findByCriteria({
+      category: ctx.furnitureType ? (ctx.furnitureType as FurnitureCategory) : undefined,
+      priceMax: Math.round(stretchCap * 1.25),
+      city: ctx.city,
+    })
+
+    // If criteria returns too few candidates (e.g. very tight constraints), widen search
+    if (candidateItems.length < 5) {
+      logger.info('repository', `Narrow criteria returned ${candidateItems.length} items; falling back to category/all search`)
+      candidateItems = ctx.furnitureType
+        ? await repository.findByCategory(ctx.furnitureType as FurnitureCategory)
+        : await repository.findAll()
+    }
+
+    const allItems = candidateItems
     const allItemMap = new Map(allItems.map(i => [i.id, i]))
-    logger.debug('repository', `Loaded ${allItems.length} items from repository`)
+    logger.debug('repository', `Loaded ${allItems.length} candidate items from repository`)
 
     // Filter out user-rejected items before scoring — never score items the user dismissed
     const rejectedIds = Array.isArray(ctx.alreadyRejectedIds) ? ctx.alreadyRejectedIds : []
@@ -88,10 +110,6 @@ export async function POST(req: NextRequest) {
     }
 
     // ─ Step 2: Deterministic scoring ──────────────────────────────────────
-    const budget = ctx.budget
-    const budgetMax = ctx.budgetMax ?? Math.round(budget * 1.4)
-    // Respect the user's selected flexibility ceiling from the intake flow.
-    const stretchCap = Math.max(budget, budgetMax)
 
     const rankingResult = rankingPipeline.rank(
       eligible,
@@ -187,55 +205,47 @@ export async function POST(req: NextRequest) {
     }
 
     // ─ Step 3.5: Preference-aware soft reranking ─────────────────────────
-    const hasPreferenceProfile = Boolean(userPreference)
-    if (hasPreferenceProfile && finalOrder.length > 1) {
-      const preferredCategories = new Set(userPreference?.preferred_categories ?? [])
-      const preferredStyles = new Set(userPreference?.preferred_styles ?? [])
-      const typicalBudgetMin = userPreference?.typical_budget_min ?? null
-      const typicalBudgetMax = userPreference?.typical_budget_max ?? null
-
-      const applyStyleBias = (ctx.stylePreference?.length ?? 0) === 0 && preferredStyles.size > 0
-      const applyCategoryBias = !ctx.furnitureType && preferredCategories.size > 0
-
-      const preferenceBoostById = new Map<string, number>()
-      for (const score of finalOrder) {
-        const item = allItemMap.get(score.itemId)
-        if (!item) continue
-
-        let boost = 0
-
-        if (applyCategoryBias && preferredCategories.has(item.category)) {
-          boost += 2
-        }
-
-        if (applyStyleBias && item.style.some(style => preferredStyles.has(style))) {
-          boost += 2
-        }
-
-        if (typeof typicalBudgetMax === 'number' && typicalBudgetMax > 0) {
-          if (item.price <= typicalBudgetMax) {
-            boost += 2
-          } else if (item.price <= Math.round(typicalBudgetMax * 1.15)) {
-            boost += 1
-          }
-        }
-
-        if (typeof typicalBudgetMin === 'number' && typicalBudgetMin > 0 && item.price < typicalBudgetMin) {
-          boost -= 1
-        }
-
-        // Cap preference influence so current-session signals remain dominant.
-        preferenceBoostById.set(score.itemId, Math.max(-1, Math.min(4, boost)))
+    // ─ Step 3.5: Multi-dimensional taste profile personalization ──────────
+    if (userPreference && authedUserId && finalOrder.length > 1) {
+      const tasteProfile: TasteProfile = createEmptyTasteProfile(authedUserId)
+      
+      if (userPreference.preferred_styles) {
+        userPreference.preferred_styles.forEach((st) => {
+          tasteProfile.stylePreference[st as StyleTag] = { value: 3, confidence: 0.8 }
+        })
       }
+      if (userPreference.preferred_categories) {
+        userPreference.preferred_categories.forEach((cat) => {
+          tasteProfile.categoryAffinity[cat as FurnitureCategory] = { value: 3, confidence: 0.8 }
+        })
+      }
+      if (userPreference.typical_budget_min || userPreference.typical_budget_max) {
+        tasteProfile.budgetPreference = {
+          preferredBand: userPreference.typical_budget_max && userPreference.typical_budget_max > 40000 ? 'premium' : 'balanced',
+          minBudget: userPreference.typical_budget_min ?? 10000,
+          maxBudget: userPreference.typical_budget_max ?? 50000,
+          confidence: 0.85,
+        }
+      }
+      tasteProfile.behavioralVolume = 12
 
-      finalOrder = [...finalOrder].sort((a, b) => {
-        const aAdjusted = a.totalScore + (preferenceBoostById.get(a.itemId) ?? 0)
-        const bAdjusted = b.totalScore + (preferenceBoostById.get(b.itemId) ?? 0)
-        return bAdjusted - aAdjusted
-      })
+      finalOrder = finalOrder.map(scoreItem => {
+        const fullItem = allItemMap.get(scoreItem.itemId)
+        if (!fullItem) return scoreItem
+        const breakdown = computePersonalizedScore({
+          item: fullItem,
+          context: ctx,
+          tasteProfile,
+          baseModelScore: scoreItem.totalScore / 100,
+        })
+        return {
+          ...scoreItem,
+          totalScore: Math.round(breakdown.finalScore * 100),
+        }
+      }).sort((a, b) => b.totalScore - a.totalScore)
 
       contextInsights = [
-        'Ordering lightly tuned using your saved preferences (city/budget/style/category).',
+        'Personalized using your multi-dimensional taste profile (style, budget affinity, and room scale).',
         ...contextInsights,
       ].slice(0, 4)
     }
